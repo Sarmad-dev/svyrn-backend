@@ -1,0 +1,7 @@
+  session: {
+    modelName: "usersessions",
+    model: UserSession,
+    adapter: mongodbAdapter(mongoose.connection.db),
+    collectionName: "usersessions",
+    expiresIn: 60 * 60 * 24 * 7, // 7 days
+  },

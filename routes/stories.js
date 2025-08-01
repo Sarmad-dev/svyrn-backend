@@ -1,0 +1,43 @@
+import express from "express";
+import { protect } from "../middleware/auth.js";
+import { validate, createStorySchema } from "../middleware/validation.js";
+import {
+  createStory,
+  getTimelineStories,
+  getStory,
+  getMyStories,
+  deleteStory,
+  getStoryViewers,
+} from "../controllers/storyController.js";
+
+const router = express.Router();
+
+// Story routes
+router.post("/", protect, createStory);
+router.get("/timeline", protect, getTimelineStories);
+router.get("/my-stories", protect, getMyStories);
+router.get("/:id", protect, getStory);
+router.delete("/:id", protect, deleteStory);
+router.get("/:id/viewers", protect, getStoryViewers);
+
+// Admin/testing routes
+router.post("/cleanup", protect, async (req, res) => {
+  try {
+    const backgroundJobManager = require("../services/BackgroundJobManager");
+    const deletedCount = await backgroundJobManager.deleteExpiredStoriesNow();
+
+    res.status(200).json({
+      status: "success",
+      message: "Story cleanup completed",
+      data: { deletedCount },
+    });
+  } catch (error) {
+    res.status(500).json({
+      status: "error",
+      message: "Error running story cleanup",
+      error: error.message,
+    });
+  }
+});
+
+export default router;
