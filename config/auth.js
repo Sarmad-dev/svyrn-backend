@@ -28,13 +28,25 @@ export const initAuth = async () => {
     );
   }
 
+  console.log("FRONTEND URL: ", process.env.FRONTEND_URL);
+
   auth = betterAuth({
     database: mongodbAdapter(mongoose.connection.db),
-    trustedOrigins: [process.env.FRONTEND_URL || "http://localhost:5173"],
     emailAndPassword: {
       enabled: true,
       requireEmailVerification: false,
     },
+    advanced: {
+      crossSubDomainCookies: {
+        enabled: true,
+        domain: process.env.FRONTEND_URL, // your domain
+      },
+    },
+    trustedOrigins: [
+      process.env.FRONTEND_URL,
+      "localhost:3000",
+      "https://app2.example.com",
+    ],
     user: {
       modelName: "users",
       model: User,
@@ -79,6 +91,32 @@ export const initAuth = async () => {
                 token: token,
               },
             };
+          },
+          async after(session, context) {
+            const token = session.token;
+
+            // Set cookie in response
+            // In the session.create.after hook:
+            context.setCookie("token", token, {
+              httpOnly: true,
+              secure: process.env.NODE_ENV === "production",
+              sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+              path: "/",
+              domain:
+                process.env.NODE_ENV === "production"
+                  ? ".svyrn.vercel.app" // Replace with your actual domain
+                  : undefined,
+            });
+          },
+        },
+        delete: {
+          async after(_, context) {
+            context.setCookie("token", "", {
+              httpOnly: true,
+              secure: true,
+              sameSite: "none",
+              path: "/",
+            });
           },
         },
       },

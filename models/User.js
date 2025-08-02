@@ -8,13 +8,13 @@ const userSchema = new mongoose.Schema({
     trim: true,
     maxlength: [50, 'Name cannot exceed 50 characters']
   },
-  username: {
-    type: String,
-    required: false,
-    unique: true,
-    trim: true,
-    maxlength: [50, 'Username cannot exceed 50 characters']
-  },
+  // username: {
+  //   type: String,
+  //   required: false,
+  //   unique: true,
+  //   trim: true,
+  //   maxlength: [50, 'Username cannot exceed 50 characters']
+  // },
   email: {
     type: String,
     required: [true, 'Email is required'],

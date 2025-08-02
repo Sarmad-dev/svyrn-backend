@@ -9,6 +9,10 @@ export const generateToken = (id) => {
   });
 };
 
+export const returnBetterAuthApi = async () => {
+  return sign
+}
+
 // @desc    Register a new user
 // @route   POST /api/auth/register
 // @access  Public
