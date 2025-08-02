@@ -86,7 +86,6 @@ export const initAuth = async () => {
             context.setCookie("auth_token", token, {
               httpOnly: false,
               sameSite: "lax",
-              maxAge: 
               path: "/",
             });
           },
