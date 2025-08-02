@@ -80,27 +80,6 @@ export const initAuth = async () => {
               },
             };
           },
-          async after(session, context) {
-            const token = session.token;
-
-            context.setCookie("auth_token", token, {
-              httpOnly: true, // Prevent JS access
-              secure: true,   // Required for cross-site cookies
-              sameSite: "none", // Allow cross-site
-              path: "/",
-            });
-          },
-        },
-        delete: {
-          async after(_, context) {
-            context.setCookie("auth_token", "", {
-              httpOnly: true,
-              secure: true,
-              sameSite: "none",
-              path: "/",
-              maxAge: 0,
-            });            
-          },
         },
       },
     },
