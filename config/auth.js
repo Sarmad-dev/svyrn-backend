@@ -71,7 +71,7 @@ export const initAuth = async () => {
     databaseHooks: {
       session: {
         create: {
-          async before(session, context) {
+          async before(session) {
             const token = await createCustomToken(session.id, session.userId);
             return {
               data: {

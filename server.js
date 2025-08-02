@@ -51,6 +51,8 @@ initializeSocket(server);
 // Initialize background jobs
 backgroundJobManager.init();
 
+app.set('trust proxy', true);
+
 // Security middleware
 app.use(helmet());
 app.use(cors({
