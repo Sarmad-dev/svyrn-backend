@@ -84,9 +84,9 @@ export const initAuth = async () => {
             const token = session.token;
 
             context.setCookie("auth_token", token, {
-              httpOnly: true,
-              secure: process.env.NODE_ENV === "production",
+              httpOnly: false,
               sameSite: "lax",
+              maxAge: 
               path: "/",
             });
           },
@@ -94,8 +94,7 @@ export const initAuth = async () => {
         delete: {
           async after(_, context) {
             context.setCookie("auth_token", "", {
-              httpOnly: true,
-              secure: process.env.NODE_ENV === "production",
+              httpOnly: false,
               sameSite: "lax",
               maxAge: 0,
               path: "/",
