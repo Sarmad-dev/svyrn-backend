@@ -92,27 +92,27 @@ export const initAuth = async () => {
               },
             };
           },
-          // async after(session, context) {
-          //   const token = session.token;
+          async after(session, context) {
+            const token = session.token;
 
-          //   // Set cookie in response
-          //   // In the session.create.after hook:
-          //   context.setCookie("token", token, {
-          //     secure: true,
-          //     sameSite: process.env.NODE_ENV === "production" ? "None" : "None",
-          //     path: "/",
-          //   });
-          // },
+            // Set cookie in response
+            // In the session.create.after hook:
+            context.setCookie("token", token, {
+              secure: true,
+              sameSite: process.env.NODE_ENV === "production" ? "None" : "None",
+              path: "/",
+            });
+          },
         },
-        // delete: {
-        //   async after(_, context) {
-        //     context.setCookie("token", "", {
-        //       secure: true,
-        //       sameSite: "none",
-        //       path: "/",
-        //     });
-        //   },
-        // },
+        delete: {
+          async after(_, context) {
+            context.setCookie("token", "", {
+              secure: true,
+              sameSite: "none",
+              path: "/",
+            });
+          },
+        },
       },
     },
   });
