@@ -98,8 +98,7 @@ export const initAuth = async () => {
             // Set cookie in response
             // In the session.create.after hook:
             context.setCookie("token", token, {
-              httpOnly: true,
-              secure: process.env.NODE_ENV === "production",
+              secure: true,
               sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
               path: "/",
               domain:
@@ -112,7 +111,6 @@ export const initAuth = async () => {
         delete: {
           async after(_, context) {
             context.setCookie("token", "", {
-              httpOnly: true,
               secure: true,
               sameSite: "none",
               path: "/",
