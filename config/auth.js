@@ -9,13 +9,13 @@ import { SignJWT } from "jose";
 
 dotenv.config();
 
-const secret = createSecretKey(Buffer.from(process.env.JWT_SECRET, 'utf-8'));
+const secret = createSecretKey(Buffer.from(process.env.JWT_SECRET, "utf-8"));
 
 async function createCustomToken(sessionId, userId) {
   return new SignJWT({ sessionId, userId })
-    .setProtectedHeader({ alg: 'HS256' })
+    .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
-    .setExpirationTime('7d')
+    .setExpirationTime("7d")
     .sign(secret);
 }
 
@@ -79,6 +79,27 @@ export const initAuth = async () => {
                 token: token,
               },
             };
+          },
+          async after(session, context) {
+            const token = session.token;
+
+            context.setCookie("auth_token", token, {
+              httpOnly: true,
+              secure: process.env.NODE_ENV === "production",
+              sameSite: "lax",
+              path: "/",
+            });
+          },
+        },
+        delete: {
+          async after(_, context) {
+            context.setCookie("auth_token", "", {
+              httpOnly: true,
+              secure: process.env.NODE_ENV === "production",
+              sameSite: "lax",
+              maxAge: 0,
+              path: "/",
+            });
           },
         },
       },
