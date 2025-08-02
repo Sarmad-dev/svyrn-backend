@@ -44,8 +44,8 @@ export const initAuth = async () => {
     },
     trustedOrigins: [
       process.env.FRONTEND_URL,
-      "localhost:3000",
-      "https://app2.example.com",
+      "http://localhost:3000",
+      "http://localhost:3001",
     ],
     user: {
       modelName: "users",
@@ -92,31 +92,27 @@ export const initAuth = async () => {
               },
             };
           },
-          async after(session, context) {
-            const token = session.token;
+          // async after(session, context) {
+          //   const token = session.token;
 
-            // Set cookie in response
-            // In the session.create.after hook:
-            context.setCookie("token", token, {
-              secure: true,
-              sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
-              path: "/",
-              domain:
-                process.env.NODE_ENV === "production"
-                  ? ".svyrn.vercel.app" // Replace with your actual domain
-                  : undefined,
-            });
-          },
+          //   // Set cookie in response
+          //   // In the session.create.after hook:
+          //   context.setCookie("token", token, {
+          //     secure: true,
+          //     sameSite: process.env.NODE_ENV === "production" ? "None" : "None",
+          //     path: "/",
+          //   });
+          // },
         },
-        delete: {
-          async after(_, context) {
-            context.setCookie("token", "", {
-              secure: true,
-              sameSite: "none",
-              path: "/",
-            });
-          },
-        },
+        // delete: {
+        //   async after(_, context) {
+        //     context.setCookie("token", "", {
+        //       secure: true,
+        //       sameSite: "none",
+        //       path: "/",
+        //     });
+        //   },
+        // },
       },
     },
   });
