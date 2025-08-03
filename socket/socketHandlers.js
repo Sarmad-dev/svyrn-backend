@@ -3,7 +3,7 @@ import Message from "../models/Message.js";
 import Notification from "../models/Notification.js";
 import UserSession from "../models/UserSession.js";
 import User from "../models/User.js";
-import NotificationHelper from "./NotificationHelper.js";
+import NotificationHelper from "./../utils/notificationHelper.js";
 
 class SocketHandlers {
   constructor(io) {
