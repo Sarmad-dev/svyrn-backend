@@ -119,13 +119,8 @@ export const getConversations = async (req, res) => {
         "participants.user",
         "name username profilePicture isVerified _id"
       )
-      .populate({
-        path: "lastMessage",
-        populate: {
-          path: "sender",
-          select: "name username profilePicture createdAt",
-        },
-      })
+      .populate("lastMessage")
+      .populate("lastMessage.sender", "name username profilePicture")
       .sort({ lastActivity: -1 })
       .limit(Number(limit))
       .skip(skip);
