@@ -119,7 +119,6 @@ export const getConversations = async (req, res) => {
         "participants.user",
         "name username profilePicture isVerified _id"
       )
-      .populate("lastMessage", "content type sender createdAt")
       .populate({
         path: "lastMessage",
         populate: {
@@ -135,7 +134,9 @@ export const getConversations = async (req, res) => {
 
     // Add unread count for each conversation
     const conversationsWithUnread = conversations.map((conv) => {
-      const participant = conv.getParticipant(req.user.id);
+      const participant = conv.participants.find(
+        (p) => p.user.toString() === req.user.id.toString()
+      );
       return {
         ...conv.toObject(),
         unreadCount: participant ? participant.unreadCount : 0,
