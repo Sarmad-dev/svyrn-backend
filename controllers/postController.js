@@ -12,6 +12,7 @@ import cloudinary from "../utils/cloudinary.js";
 import { getLocationName } from "../utils/location.js";
 import Group from "../models/Group.js";
 import Page from "../models/Page.js";
+import NotificationHelper from "../utils/notificationHelper.js";
 
 const recommendationEngine = new RecommendationEngine();
 const contentAnalyzer = new ContentAnalyzer();
@@ -163,43 +164,43 @@ export const getFeed = async (req, res) => {
 
     //   metadata = recommendations.metadata;
     // } else {
-      // Chronological feed
-      const skip = (page - 1) * limit;
-      const user = await User.findById(req.user.id);
-      const followingIds = user.following;
+    // Chronological feed
+    const skip = (page - 1) * limit;
+    const user = await User.findById(req.user.id);
+    const followingIds = user.following;
 
-      posts = await Post.find({
-        $and: [
-          {
-            $or: [
-              { author: req.user.id },
-              {
-                author: { $in: followingIds },
-                privacy: { $in: ["public", "friends"] },
-              },
-              { privacy: "public" },
-            ],
-          },
-          { isActive: true },
-          { group: null }, // exclude group posts
-          { page: null }, // exclude page posts
-        ],
+    posts = await Post.find({
+      $and: [
+        {
+          $or: [
+            { author: req.user.id },
+            {
+              author: { $in: followingIds },
+              privacy: { $in: ["public", "friends"] },
+            },
+            { privacy: "public" },
+          ],
+        },
+        { isActive: true },
+        { group: null }, // exclude group posts
+        { page: null }, // exclude page posts
+      ],
+    })
+      .populate("author", "name username profilePicture isVerified")
+      .populate("tags", "name username profilePicture")
+      .populate({
+        path: "comments",
+        populate: {
+          path: "author",
+          select: "name username profilePicture",
+        },
+        options: { sort: { createdAt: -1 } },
       })
-        .populate("author", "name username profilePicture isVerified")
-        .populate("tags", "name username profilePicture")
-        .populate({
-          path: "comments",
-          populate: {
-            path: "author",
-            select: "name username profilePicture",
-          },
-          options: { sort: { createdAt: -1 } },
-        })
-        .sort({ isPinned: -1, createdAt: -1 })
-        .limit(Number(limit))
-        .skip(skip);
+      .sort({ isPinned: -1, createdAt: -1 })
+      .limit(Number(limit))
+      .skip(skip);
 
-      metadata = { algorithm: "chronological" };
+    metadata = { algorithm: "chronological" };
     // }
 
     // Track feed view
@@ -455,6 +456,17 @@ export const reactToPost = async (req, res) => {
       }
     );
 
+    if (
+      post.author.toString() !== req.user.id.toString() &&
+      !existingReaction
+    ) {
+      await NotificationHelper.notifyLike(
+        req.params.id,
+        req.user.id,
+        post.author
+      );
+    }
+
     res.status(200).json({
       status: "success",
       message: "Reaction updated successfully",
@@ -546,6 +558,16 @@ export const addComment = async (req, res) => {
         isReply: !!parentComment,
       }
     );
+
+    // Send notification to post author (if not self-comment)
+    if (post.author.toString() !== req.user.id.toString()) {
+      await NotificationHelper.notifyComment(
+        req.params.id,
+        comment._id,
+        req.user.id,
+        post.author
+      );
+    }
 
     res.status(201).json({
       status: "success",

@@ -6,6 +6,7 @@ import {
   getMimeTypeFromBase64,
 } from "../services/ImageUrlCreate.js";
 import cloudinary from "../utils/cloudinary.js";
+import NotificationHelper from "./../utils/notificationHelper.js";
 
 // @desc    Create a new group
 // @route   POST /api/groups
@@ -403,6 +404,16 @@ export const joinGroup = async (req, res) => {
         status: "active",
       });
       await group.save();
+
+      for (const admin of admins) {
+        // Send join notification to group creator
+        await NotificationHelper.notifyJoinGroup(
+          req.params.id,
+          req.user.id,
+          admin.user,
+          group.name
+        );
+      }
 
       res.status(200).json({
         status: "success",

@@ -1,5 +1,6 @@
 import Product from "../models/Product.js";
 import cloudinary from "../utils/cloudinary.js";
+import NotificationHelper from "../utils/notificationHelper.js";
 
 // @desc    Create a new product listing
 // @route   POST /api/marketplace/products
@@ -341,6 +342,17 @@ export const expressInterest = async (req, res) => {
     });
 
     await product.save();
+
+    await NotificationHelper.createNotification({
+      recipient: product.seller,
+      sender: req.user.id,
+      type: 'system',
+      title: 'Product Interest',
+      message: `showed interest in your product "${product.title}"`,
+      data: { productId: product._id },
+      priority: 'medium'
+    });
+
 
     res.status(200).json({
       status: "success",

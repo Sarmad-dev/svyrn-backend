@@ -2,6 +2,7 @@ import Conversation from "../models/Conversation.js";
 import Message from "../models/Message.js";
 import User from "../models/User.js";
 import { validationResult } from "express-validator";
+import NotificationHelper from "./../utils/notificationHelper.js";
 
 // @desc    Create a new conversation
 // @route   POST /api/conversations
@@ -185,7 +186,6 @@ export const getConversation = async (req, res) => {
         participant.user._id.toString() === req.user._id.toString()
     );
 
-    
     if (!isMember) {
       return res.status(403).json({
         status: "error",
@@ -297,6 +297,24 @@ export const sendMessage = async (req, res) => {
 
     await conversation.save();
 
+    // Send message notifications to offline participants
+    const offlineParticipants = conversation.participants.filter(
+      (p) =>
+        p.user.toString() !== req.user.id.toString() &&
+        p.isActive &&
+        (!global.socketHandlers ||
+          !global.socketHandlers.isUserOnline(p.user.toString()))
+    );
+
+    for (const participant of offlineParticipants) {
+      await NotificationHelper.notifyMessage(
+        req.params.id,
+        message._id,
+        req.user.id,
+        participant.user
+      );
+    }
+
     res.status(201).json({
       status: "success",
       message: "Message sent successfully",
@@ -377,7 +395,7 @@ export const getMessages = async (req, res) => {
       await conversation.save();
     }
 
-    console.log("Messages: ", messages)
+    console.log("Messages: ", messages);
 
     res.status(200).json({
       status: "success",
@@ -559,6 +577,16 @@ export const reactToMessage = async (req, res) => {
     }
 
     await message.save();
+
+    // Send reaction notification to message author (if not self-reaction)
+    if (message.sender.toString() !== req.user.id.toString()) {
+      await NotificationHelper.notifyReaction(
+        req.params.messageId,
+        req.params.conversationId,
+        req.user.id,
+        message.sender
+      );
+    }
 
     res.status(200).json({
       status: "success",

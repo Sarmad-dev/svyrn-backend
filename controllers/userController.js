@@ -1,6 +1,7 @@
 import Post from "../models/Post.js";
 import User from "../models/User.js";
 import { validationResult } from "express-validator";
+import NotificationHelper from "../utils/notificationHelper.js";
 
 // @desc    Search users
 // @route   GET /api/users/search
@@ -195,6 +196,8 @@ export const followUser = async (req, res) => {
     // Add to followers list
     userToFollow.followers.push(req.user.id);
     await userToFollow.save();
+
+    await NotificationHelper.notifyFollow(req.user.id, req.params.id);
 
     res.status(200).json({
       status: "success",

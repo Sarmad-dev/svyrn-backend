@@ -1,5 +1,5 @@
 import Page from '../models/Page.js';
-
+import NotificationHelper from '../utils/notificationHelper.js';
 // @desc    Create a new page
 // @route   POST /api/pages
 // @access  Private
@@ -153,6 +153,19 @@ export const followPage = async (req, res) => {
 
     page.followers.push(req.user.id);
     await page.save();
+
+
+    // Notify page owner about new follower
+    if (page.owner.toString() !== req.user.id.toString()) {
+      await NotificationHelper.createNotification({
+        recipient: page.owner,
+        sender: req.user.id,
+        type: 'page_follow',
+        title: 'New Page Follower',
+        message: `started following your page "${page.name}"`,
+        data: { pageId: page._id }
+      });
+    }
 
     res.status(200).json({
       status: 'success',
