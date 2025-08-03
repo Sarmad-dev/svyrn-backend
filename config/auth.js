@@ -98,8 +98,10 @@ export const initAuth = async () => {
             // Set cookie in response
             // In the session.create.after hook:
             context.setCookie("token", token, {
+              httpOnly: true,
+              domain: 'svyrn-git-main-muhammad-sarmads-projects-c4ee4f7a.vercel.app',
               secure: true,
-              sameSite: process.env.NODE_ENV === "production" ? "None" : "None",
+              sameSite: "Lax",
               path: "/",
             });
           },
