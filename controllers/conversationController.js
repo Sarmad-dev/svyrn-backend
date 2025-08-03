@@ -377,6 +377,8 @@ export const getMessages = async (req, res) => {
       await conversation.save();
     }
 
+    console.log("Messages: ", messages)
+
     res.status(200).json({
       status: "success",
       data: {
