@@ -24,6 +24,8 @@ import notificationRoutes from "./routes/notifications.js";
 import statusRoutes from "./routes/status.js";
 import recommendationRoutes from "./routes/recommendations.js";
 import storyRoutes from "./routes/stories.js";
+import searchRoutes from "./routes/search.js";
+import campaignRoutes from "./routes/campaign.js";
 import backgroundJobManager from "./services/BackgroundJobManager.js";
 import initializeSocket from "./socket/index.js";
 
@@ -121,6 +123,8 @@ app.use("/api/notifications", notificationRoutes);
 app.use("/api/status", statusRoutes);
 app.use("/api/recommendations", recommendationRoutes);
 app.use("/api/stories", storyRoutes);
+app.use('/api/search', searchRoutes);
+app.use("/api/campaign", campaignRoutes);
 
 // Health check
 app.get("/api/health", (req, res) => {

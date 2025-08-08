@@ -111,7 +111,6 @@ export const trackInteraction = async (req, res) => {
 // @access  Private
 export const getPreferences = async (req, res) => {
   try {
-    const UserPreference = require('../models/UserPreference');
     
     let preferences = await UserPreference.findOne({ user: req.user.id });
     if (!preferences) {
@@ -136,7 +135,6 @@ export const getPreferences = async (req, res) => {
 // @access  Private
 export const updatePreferences = async (req, res) => {
   try {
-    const UserPreference = require('../models/UserPreference');
     const updates = req.body;
 
     const preferences = await UserPreference.findOneAndUpdate(

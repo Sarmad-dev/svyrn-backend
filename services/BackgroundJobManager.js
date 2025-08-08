@@ -2,6 +2,7 @@ import cron from 'node-cron';
 import Story from '../models/Story.js';
 import Notification from '../models/Notification.js';
 import UserSession from '../models/UserSession.js';
+import ContentScore from '../models/ContentScore.js';
 
 class BackgroundJobManager {
   constructor() {
@@ -133,8 +134,6 @@ class BackgroundJobManager {
     const job = cron.schedule('0 3 * * *', async () => { // Every day at 3 AM
       try {
         console.log('🧹 Running content score cleanup job...');
-        
-        const ContentScore = require('../models/ContentScore');
         
         // Delete content scores older than 30 days
         const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);

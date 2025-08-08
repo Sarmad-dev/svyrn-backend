@@ -13,6 +13,7 @@ import { getLocationName } from "../utils/location.js";
 import Group from "../models/Group.js";
 import Page from "../models/Page.js";
 import NotificationHelper from "../utils/notificationHelper.js";
+import MediaCreation from "../services/MediaCreation.js";
 
 const recommendationEngine = new RecommendationEngine();
 const contentAnalyzer = new ContentAnalyzer();
@@ -69,6 +70,15 @@ export const createPost = async (req, res) => {
 
       const result = await cloudinary.uploader.upload(base64, {
         resource_type: fileCategory,
+      });
+
+      new MediaCreation().createMedia({
+        base64,
+        caption: "",
+        post: postData._id,
+        page: pageId,
+        group: groupId,
+        author: req.user._id,
       });
 
       postData.content.media = [
@@ -188,14 +198,6 @@ export const getFeed = async (req, res) => {
     })
       .populate("author", "name username profilePicture isVerified")
       .populate("tags", "name username profilePicture")
-      .populate({
-        path: "comments",
-        populate: {
-          path: "author",
-          select: "name username profilePicture",
-        },
-        options: { sort: { createdAt: -1 } },
-      })
       .sort({ isPinned: -1, createdAt: -1 })
       .limit(Number(limit))
       .skip(skip);
@@ -579,6 +581,70 @@ export const addComment = async (req, res) => {
     res.status(500).json({
       status: "error",
       message: "Error adding comment",
+      error: error.message,
+    });
+  }
+};
+
+// @desc    Get comments for a post
+// @route   GET /api/posts/:id/comments
+// @access  Private
+export const getComments = async (req, res) => {
+  try {
+    const post = await Post.findById(req.params.id);
+    if (!post || !post.isActive) {
+      return res.status(404).json({
+        status: "error",
+        message: "Post not found",
+      });
+    }
+
+    const comments = await Comment.find({ post: req.params.id })
+      .populate("author", "name username profilePicture")
+      .populate({
+        path: "replies",
+        populate: { path: "author", select: "name username profilePicture" },
+      })
+      .sort({ createdAt: -1 });
+
+    res.status(200).json({
+      status: "success",
+      data: { comments },
+    });
+  } catch (error) {
+    console.log("Comment Error: ", error);
+    res.status(500).json({
+      status: "error",
+      message: "Error fetching comments",
+      error: error.message,
+    });
+  }
+};
+
+// @desc    Get media for a post
+// @route   GET /api/posts/:id/media
+// @access  Private
+export const getMedia = async (req, res) => {
+  try {
+    const post = await Post.findById(req.params.id);
+    if (!post || !post.isActive) {
+      return res.status(404).json({
+        status: "error",
+        message: "Post not found",
+      });
+    }
+
+    const media = await Media.find({ post: req.params.id });
+
+    res.status(200).json({
+      status: "success",
+      data: { media },
+    });
+  } catch (error) {
+    console.log("Media Error: ", error);
+    res.status(500).json({
+      status: "error",
+      message: "Error fetching media",
       error: error.message,
     });
   }

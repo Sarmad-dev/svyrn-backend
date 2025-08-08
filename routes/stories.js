@@ -1,6 +1,5 @@
 import express from "express";
 import { protect } from "../middleware/auth.js";
-import { validate, createStorySchema } from "../middleware/validation.js";
 import {
   createStory,
   getTimelineStories,
@@ -9,6 +8,7 @@ import {
   deleteStory,
   getStoryViewers,
 } from "../controllers/storyController.js";
+import backgroundJobManager from "../services/BackgroundJobManager.js";
 
 const router = express.Router();
 
@@ -23,7 +23,6 @@ router.get("/:id/viewers", protect, getStoryViewers);
 // Admin/testing routes
 router.post("/cleanup", protect, async (req, res) => {
   try {
-    const backgroundJobManager = require("../services/BackgroundJobManager");
     const deletedCount = await backgroundJobManager.deleteExpiredStoriesNow();
 
     res.status(200).json({

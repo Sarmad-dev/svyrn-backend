@@ -111,9 +111,9 @@ groupSchema.index({ creator: 1 });
 groupSchema.index({ 'members.user': 1 });
 
 // Virtual for members count
-groupSchema.virtual('membersCount').get(function() {
-  return this.members.filter(member => member.status === 'active').length;
-});
+// groupSchema.virtual('membersCount').get(function() {
+//   return this.members.filter?.(member => member.status === 'active').length;
+// });
 
 // Virtual for posts count
 groupSchema.virtual('postsCount').get(function() {

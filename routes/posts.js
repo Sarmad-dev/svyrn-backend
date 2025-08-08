@@ -16,5 +16,8 @@ router.post('/:id/comments', protect, validate(createCommentSchema), postControl
 router.post('/:id/share', protect, postController.sharePost);
 router.post('/:id/save', protect, postController.savePost);
 router.post('/:id/hide', protect, postController.hidePost);
+router.get('/:id/media', protect, postController.getMedia);
+router.get('/:id/comments', protect, postController.getComments)
+
 
 export default router;
