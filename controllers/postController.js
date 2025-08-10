@@ -223,6 +223,8 @@ export const getFeed = async (req, res) => {
 
     const total = posts.length;
 
+    console.log("posts", posts);
+
     res.status(200).json({
       status: "success",
       data: {
