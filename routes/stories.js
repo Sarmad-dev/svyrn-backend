@@ -7,6 +7,9 @@ import {
   getMyStories,
   deleteStory,
   getStoryViewers,
+  addReaction,
+  addComment,
+  getStoryInteractions,
 } from "../controllers/storyController.js";
 import backgroundJobManager from "../services/BackgroundJobManager.js";
 
@@ -19,6 +22,11 @@ router.get("/my-stories", protect, getMyStories);
 router.get("/:id", protect, getStory);
 router.delete("/:id", protect, deleteStory);
 router.get("/:id/viewers", protect, getStoryViewers);
+
+// Story interaction routes
+router.post("/:id/react", protect, addReaction);
+router.post("/:id/comment", protect, addComment);
+router.get("/:id/interactions", protect, getStoryInteractions);
 
 // Admin/testing routes
 router.post("/cleanup", protect, async (req, res) => {
