@@ -64,8 +64,10 @@ export const createGroup = async (req, res) => {
 // @access  Private
 export const getUserGroups = async (req, res) => {
   try {
-    const { limit = 10, page = 1, role, status = "active" } = req.query;
-    const skip = (page - 1) * limit;
+    const { limit = 10, cursor, role, status = "active" } = req.query;
+    const limitNum = parseInt(limit);
+
+    console.log('[DEBUG] getUserGroups called with:', { limit: limitNum, cursor, role, status });
 
     let query = {
       "members.user": req.user.id,
@@ -78,58 +80,118 @@ export const getUserGroups = async (req, res) => {
       query["members.role"] = role;
     }
 
+    // Add cursor condition if provided
+    if (cursor) {
+      query._id = { $lt: cursor };
+      console.log('[DEBUG] Added cursor condition:', cursor);
+    }
+
+    // Fetch groups with limit + 1 to determine if there are more pages
     const groups = await Group.find(query)
       .populate("creator", "name username profilePicture")
       .populate("members.user", "name username profilePicture")
       .select(
         "name description coverPhoto profilePicture category privacy membersCount postsCount createdAt members"
       )
-      .sort({ "members.joinedAt": -1 })
-      .limit(Number(limit))
-      .skip(skip);
+      .sort({ "members.joinedAt": -1, _id: -1 }) // Added _id for consistent cursor ordering
+      .limit(limitNum + 1)
+      .lean();
 
-    // Add user's role and join date for each group
-    const groupsWithUserInfo = groups.map((group) => {
-      const groupObj = group.toObject();
+    console.log('[DEBUG] Fetched groups count:', groups.length);
 
-      // Only extract the current user’s member object
-      const userMember = groupObj.members.find(
-        (member) => member.user.toString() === req.user.id.toString()
-      );
+    let hasNextPage = false;
+    let nextCursor = null;
 
-      return {
-        _id: group._id,
-        name: group.name,
-        description: group.description,
-        profilePicture: group.profilePicture,
-        coverPhoto: group.coverPhoto,
-        category: group.category,
-        privacy: group.privacy,
-        postsCount: group.posts?.length ?? 0,
-        createdAt: group.createdAt,
-        creator: group.creator,
-        userRole: userMember?.role ?? null,
-        memberStatus: userMember?.status ?? null,
-        joinedAt: userMember?.joinedAt ?? null,
-        lastVisit: userMember?.lastVisit ?? null,
-      };
-    });
+    // Determine if there are more pages and set nextCursor
+    if (groups.length > limitNum) {
+      hasNextPage = true;
+      // Remove the extra group used for pagination
+      const groupsToReturn = groups.slice(0, limitNum);
+      // Set nextCursor to the _id of the last group in the current page
+      nextCursor = groupsToReturn[groupsToReturn.length - 1]._id.toString();
+      console.log('[DEBUG] Has next page, nextCursor:', nextCursor);
+      
+      // Add user's role and join date for each group
+      const groupsWithUserInfo = groupsToReturn.map((group) => {
+        // Only extract the current user's member object
+        const userMember = group.members.find(
+          (member) => member.user.toString() === req.user.id.toString()
+        );
 
-    const total = await Group.countDocuments(query);
+        return {
+          _id: group._id,
+          name: group.name,
+          description: group.description,
+          profilePicture: group.profilePicture,
+          coverPhoto: group.coverPhoto,
+          category: group.category,
+          privacy: group.privacy,
+          postsCount: group.posts?.length ?? 0,
+          createdAt: group.createdAt,
+          creator: group.creator,
+          userRole: userMember?.role ?? null,
+          memberStatus: userMember?.status ?? null,
+          joinedAt: userMember?.joinedAt ?? null,
+          lastVisit: userMember?.lastVisit ?? null,
+        };
+      });
 
-    res.status(200).json({
-      status: "success",
-      data: {
-        groups: groupsWithUserInfo,
-        pagination: {
-          page: Number(page),
-          limit: Number(limit),
-          total,
-          pages: Math.ceil(total / limit),
+      res.status(200).json({
+        status: "success",
+        data: {
+          groups: groupsWithUserInfo,
+          pagination: {
+            hasNextPage,
+            nextCursor,
+            limit: limitNum,
+            total: groupsToReturn.length,
+          },
         },
-      },
-    });
+      });
+    } else {
+      hasNextPage = false;
+      console.log('[DEBUG] No next page, groups count:', groups.length);
+      
+      // Add user's role and join date for each group
+      const groupsWithUserInfo = groups.map((group) => {
+        // Only extract the current user's member object
+        const userMember = group.members.find(
+          (member) => member.user.toString() === req.user.id.toString()
+        );
+
+        return {
+          _id: group._id,
+          name: group.name,
+          description: group.description,
+          profilePicture: group.profilePicture,
+          coverPhoto: group.coverPhoto,
+          category: group.category,
+          privacy: group.privacy,
+          postsCount: group.posts?.length ?? 0,
+          createdAt: group.createdAt,
+          creator: group.creator,
+          userRole: userMember?.role ?? null,
+          memberStatus: userMember?.status ?? null,
+          joinedAt: userMember?.joinedAt ?? null,
+          lastVisit: userMember?.lastVisit ?? null,
+        };
+      });
+
+      res.status(200).json({
+        status: "success",
+        data: {
+          groups: groupsWithUserInfo,
+          pagination: {
+            hasNextPage,
+            nextCursor,
+            limit: limitNum,
+            total: groups.length,
+          },
+        },
+      });
+    }
   } catch (error) {
+    console.error('[DEBUG] Error in getUserGroups:', error);
     res.status(500).json({
       status: "error",
       message: "Error fetching user groups",
@@ -143,8 +205,10 @@ export const getUserGroups = async (req, res) => {
 // @access  Private
 export const getGroups = async (req, res) => {
   try {
-    const { search, category, privacy, limit = 10, page = 1 } = req.query;
-    const skip = (page - 1) * limit;
+    const { search, category, privacy, limit = 10, cursor } = req.query;
+    const limitNum = parseInt(limit);
+
+    console.log('[DEBUG] getGroups called with:', { search, category, privacy, limit: limitNum, cursor });
 
     let query = { isActive: true };
 
@@ -166,7 +230,14 @@ export const getGroups = async (req, res) => {
       query.privacy = { $ne: "secret" };
     }
 
-    const groups = await Group.aggregate([
+    // Add cursor condition if provided
+    if (cursor) {
+      query._id = { $lt: cursor };
+      console.log('[DEBUG] Added cursor condition:', cursor);
+    }
+
+    // Build aggregation pipeline with cursor-based pagination
+    const aggregationPipeline = [
       { $match: query },
       {
         $lookup: {
@@ -215,37 +286,57 @@ export const getGroups = async (req, res) => {
           },
         },
       },
-      { $sort: { createdAt: -1 } },
-      { $skip: skip },
-      { $limit: Number(limit) },
-    ]);
+      { $sort: { createdAt: -1, _id: -1 } }, // Added _id for consistent cursor ordering
+      { $limit: limitNum + 1 }, // Fetch one extra to determine if there are more pages
+    ];
 
-    // const groups = await Group.find(query)
-    //   .populate("creator", "name username profilePicture")
-    //   .select(
-    //     "name description profilePicture coverPhoto category privacy membersCount createdAt"
-    //   )
-    //   .sort({ createdAt: -1 })
-    //   .limit(Number(limit))
-    //   .skip(skip)
-    //   .lean({ virtuals: true });
+    const groups = await Group.aggregate(aggregationPipeline);
 
-    const total = await Group.countDocuments(query);
+    console.log('[DEBUG] Fetched groups count:', groups.length);
 
-    res.status(200).json({
-      status: "success",
-      data: {
-        groups,
-        pagination: {
-          page: Number(page),
-          limit: Number(limit),
-          total,
-          pages: Math.ceil(total / limit),
+    let hasNextPage = false;
+    let nextCursor = null;
+
+    // Determine if there are more pages and set nextCursor
+    if (groups.length > limitNum) {
+      hasNextPage = true;
+      // Remove the extra group used for pagination
+      const groupsToReturn = groups.slice(0, limitNum);
+      // Set nextCursor to the _id of the last group in the current page
+      nextCursor = groupsToReturn[groupsToReturn.length - 1]._id.toString();
+      console.log('[DEBUG] Has next page, nextCursor:', nextCursor);
+
+      res.status(200).json({
+        status: "success",
+        data: {
+          groups: groupsToReturn,
+          pagination: {
+            hasNextPage,
+            nextCursor,
+            limit: limitNum,
+            total: groupsToReturn.length,
+          },
         },
-      },
-    });
+      });
+    } else {
+      hasNextPage = false;
+      console.log('[DEBUG] No next page, groups count:', groups.length);
+
+      res.status(200).json({
+        status: "success",
+        data: {
+          groups,
+          pagination: {
+            hasNextPage,
+            nextCursor,
+            limit: limitNum,
+            total: groups.length,
+          },
+        },
+      });
+    }
   } catch (error) {
-    console.error("ERROR: ", error);
+    console.error('[DEBUG] Error in getGroups:', error);
     res.status(500).json({
       status: "error",
       message: "Error fetching groups",
@@ -533,8 +624,10 @@ export const updateGroup = async (req, res) => {
 // @access  Private
 export const getUserGroupFeed = async (req, res) => {
   try {
-    const { limit = 10, page = 1 } = req.query;
-    const skip = (Number(page) - 1) * Number(limit);
+    const { limit = 10, cursor } = req.query;
+    const limitNum = parseInt(limit);
+
+    console.log('[DEBUG] getUserGroupFeed called with:', { limit: limitNum, cursor });
 
     const userId = req.user.id;
 
@@ -553,23 +646,28 @@ export const getUserGroupFeed = async (req, res) => {
         data: {
           posts: [],
           pagination: {
-            page: Number(page),
-            limit: Number(limit),
+            hasNextPage: false,
+            nextCursor: null,
+            limit: limitNum,
             total: 0,
-            pages: 0,
           },
         },
       });
     }
 
-    // Step 2: Get posts from those groups
-    const total = await Post.countDocuments({
+    // Step 2: Build query with cursor-based pagination
+    const baseQuery = {
       group: { $in: groupIds },
-    });
+    };
 
-    const posts = await Post.find({
-      group: { $in: groupIds },
-    })
+    // Add cursor condition if provided
+    if (cursor) {
+      baseQuery._id = { $lt: cursor };
+      console.log('[DEBUG] Added cursor condition:', cursor);
+    }
+
+    // Get posts with limit + 1 to determine if there are more pages
+    const posts = await Post.find(baseQuery)
       .populate("author", "name username profilePicture")
       .populate("group", "name profilePicture privacy")
       .populate("tags", "name username profilePicture")
@@ -581,29 +679,65 @@ export const getUserGroupFeed = async (req, res) => {
         },
         options: { sort: { createdAt: -1 } },
       })
-      .sort({ createdAt: -1 }) // ⚠️ See recommendation below
-      .skip(skip)
-      .limit(Number(limit));
+      .sort({ createdAt: -1, _id: -1 }) // Added _id for consistent cursor ordering
+      .limit(limitNum + 1)
+      .lean();
 
-    const formattedPosts = posts.map((post) => ({
-      ...post.toObject(),
-      isGroup: post.group ? true : false,
-    }));
+    console.log('[DEBUG] Fetched posts count:', posts.length);
 
-    res.status(200).json({
-      status: "success",
-      data: {
-        posts: formattedPosts,
-        pagination: {
-          page: Number(page),
-          limit: Number(limit),
-          total,
-          pages: Math.ceil(total / Number(limit)),
+    let hasNextPage = false;
+    let nextCursor = null;
+
+    // Determine if there are more pages and set nextCursor
+    if (posts.length > limitNum) {
+      hasNextPage = true;
+      // Remove the extra post used for pagination
+      const postsToReturn = posts.slice(0, limitNum);
+      // Set nextCursor to the _id of the last post in the current page
+      nextCursor = postsToReturn[postsToReturn.length - 1]._id.toString();
+      console.log('[DEBUG] Has next page, nextCursor:', nextCursor);
+      
+      const formattedPosts = postsToReturn.map((post) => ({
+        ...post,
+        isGroup: post.group ? true : false,
+      }));
+
+      res.status(200).json({
+        status: "success",
+        data: {
+          posts: formattedPosts,
+          pagination: {
+            hasNextPage,
+            nextCursor,
+            limit: limitNum,
+            total: postsToReturn.length,
+          },
         },
-      },
-    });
+      });
+    } else {
+      hasNextPage = false;
+      console.log('[DEBUG] No next page, posts count:', posts.length);
+      
+      const formattedPosts = posts.map((post) => ({
+        ...post,
+        isGroup: post.group ? true : false,
+      }));
+
+      res.status(200).json({
+        status: "success",
+        data: {
+          posts: formattedPosts,
+          pagination: {
+            hasNextPage,
+            nextCursor,
+            limit: limitNum,
+            total: posts.length,
+          },
+        },
+      });
+    }
   } catch (error) {
-    console.error("Error in getUserGroupFeed:", error);
+    console.error('[DEBUG] Error in getUserGroupFeed:', error);
     res.status(500).json({
       status: "error",
       message: "Failed to fetch group feed",

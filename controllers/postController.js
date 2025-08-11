@@ -137,49 +137,27 @@ export const getFeed = async (req, res) => {
   try {
     const {
       limit = 10,
-      page = 1,
+      cursor,
       algorithm = "recommended",
       latitude,
       longitude,
     } = req.query;
 
+    const limitNum = parseInt(limit);
+    
+    console.log('[DEBUG] getFeed called with:', { limit: limitNum, cursor, algorithm });
+
     let posts;
     let metadata = {};
+    let hasNextPage = false;
+    let nextCursor = null;
 
-    // if (algorithm === "recommended") {
-    //   const location =
-    //     latitude &&
-    //     latitude !== "undefined" &&
-    //     longitude &&
-    //     longitude !== "undefined"
-    //       ? {
-    //           latitude: parseFloat(latitude),
-    //           longitude: parseFloat(longitude),
-    //         }
-    //       : null;
-
-    //   const recommendations = await recommendationEngine.getRecommendedFeed(
-    //     req.user.id,
-    //     {
-    //       limit: Number(limit),
-    //       page: Number(page),
-    //       location: location ?? location,
-    //     }
-    //   );
-
-    //   // Filter out posts that have a group or page
-    //   posts = recommendations.posts
-    //     .map((item) => item.post || item)
-    //     .filter((post) => !post.group && !post.page);
-
-    //   metadata = recommendations.metadata;
-    // } else {
-    // Chronological feed
-    const skip = (page - 1) * limit;
+    // Chronological feed with cursor-based pagination
     const user = await User.findById(req.user.id);
     const followingIds = user.following;
 
-    posts = await Post.find({
+    // Build the base query
+    const baseQuery = {
       $and: [
         {
           $or: [
@@ -195,35 +173,65 @@ export const getFeed = async (req, res) => {
         { group: null }, // exclude group posts
         { page: null }, // exclude page posts
       ],
-    })
+    };
+
+    // Add cursor condition if provided
+    if (cursor) {
+      baseQuery.$and.push({ _id: { $lt: cursor } });
+      console.log('[DEBUG] Added cursor condition:', cursor);
+    }
+
+    // Fetch posts with limit + 1 to determine if there are more pages
+    posts = await Post.find(baseQuery)
       .populate("author", "name username profilePicture isVerified")
       .populate("tags", "name username profilePicture")
-      .sort({ isPinned: -1, createdAt: -1 })
-      .limit(Number(limit))
-      .skip(skip);
+      .sort({ isPinned: -1, createdAt: -1, _id: -1 }) // Added _id for consistent cursor ordering
+      .limit(limitNum + 1)
+      .lean();
 
-    metadata = { algorithm: "chronological" };
-    // }
+    console.log('[DEBUG] Fetched posts count:', posts.length);
 
-    // Track feed view
+    // Determine if there are more pages and set nextCursor
+    if (posts.length > limitNum) {
+      hasNextPage = true;
+      // Remove the extra post used for pagination
+      posts = posts.slice(0, limitNum);
+      // Set nextCursor to the _id of the last post in the current page
+      nextCursor = posts[posts.length - 1]._id.toString();
+      console.log('[DEBUG] Has next page, nextCursor:', nextCursor);
+    } else {
+      hasNextPage = false;
+      console.log('[DEBUG] No next page, posts count:', posts.length);
+    }
+
+    // Track feed view for recommendations
     if (posts.length > 0) {
       posts.forEach((post) => {
-        recommendationEngine.trackInteraction(
-          req.user.id,
-          "post",
-          post._id,
-          "view",
-          {
-            algorithm,
-            location: latitude && longitude ? { latitude, longitude } : null,
-          }
-        );
+        // Use Promise.resolve().then() to make this non-blocking
+        Promise.resolve().then(() => {
+          recommendationEngine.trackInteraction(
+            req.user.id,
+            "post",
+            post._id,
+            "view",
+            {
+              algorithm,
+              location: latitude && longitude ? { latitude, longitude } : null,
+            }
+          );
+        });
       });
     }
 
-    const total = posts.length;
+    metadata = { algorithm: "chronological" };
 
-    console.log("posts", posts);
+    console.log('[DEBUG] Returning response:', {
+      postsCount: posts.length,
+      hasNextPage,
+      nextCursor,
+      firstPostId: posts[0]?._id,
+      lastPostId: posts[posts.length - 1]?._id
+    });
 
     res.status(200).json({
       status: "success",
@@ -231,14 +239,15 @@ export const getFeed = async (req, res) => {
         posts,
         metadata,
         pagination: {
-          page: Number(page),
-          limit: Number(limit),
-          total,
-          pages: Math.ceil(total / limit),
+          hasNextPage,
+          nextCursor,
+          limit: limitNum,
+          total: posts.length,
         },
       },
     });
   } catch (error) {
+    console.error('[DEBUG] getFeed error:', error);
     res.status(500).json({
       status: "error",
       message: "Error fetching feed",
