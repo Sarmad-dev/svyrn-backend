@@ -313,3 +313,90 @@ export const uploadCoverPhoto = async (req, res) => {
     });
   }
 };
+
+// @desc    Upload image to Cloudinary
+// @route   POST /api/upload/cloudinary
+// @access  Private
+export const uploadToCloudinary = async (req, res) => {
+  try {
+    const { image, folder = 'general' } = req.body;
+
+    if (!image) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Image data is required'
+      });
+    }
+
+    // Upload to Cloudinary
+    const uploadResult = await cloudinary.uploader.upload(
+      `data:image/jpeg;base64,${image}`,
+      {
+        folder: folder,
+        resource_type: 'image',
+        transformation: [
+          { width: 800, height: 600, crop: 'limit' }, // Limit dimensions
+          { quality: 'auto:good' } // Optimize quality
+        ]
+      }
+    );
+
+    res.status(200).json({
+      status: 'success',
+      message: 'Image uploaded successfully',
+      data: {
+        url: uploadResult.secure_url,
+        publicId: uploadResult.public_id,
+        width: uploadResult.width,
+        height: uploadResult.height,
+        format: uploadResult.format,
+        size: uploadResult.bytes
+      }
+    });
+  } catch (error) {
+    console.error('Cloudinary upload error:', error);
+    res.status(500).json({
+      status: 'error',
+      message: 'Failed to upload image',
+      error: error.message
+    });
+  }
+};
+
+// @desc    Delete image from Cloudinary
+// @route   DELETE /api/upload/cloudinary/:publicId
+// @access  Private
+export const deleteFromCloudinary = async (req, res) => {
+  try {
+    const { publicId } = req.params;
+
+    if (!publicId) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Public ID is required'
+      });
+    }
+
+    // Delete from Cloudinary
+    const result = await cloudinary.uploader.destroy(publicId);
+
+    if (result.result === 'ok') {
+      res.status(200).json({
+        status: 'success',
+        message: 'Image deleted successfully'
+      });
+    } else {
+      res.status(400).json({
+        status: 'error',
+        message: 'Failed to delete image'
+      });
+    }
+  } catch (error) {
+    console.error('Cloudinary delete error:', error);
+    res.status(500).json({
+      status: 'error',
+      message: 'Failed to delete image',
+      error: error.message
+    });
+  }
+};

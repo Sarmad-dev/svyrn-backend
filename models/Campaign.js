@@ -7,6 +7,11 @@ const campaignSchema = new mongoose.Schema({
     trim: true,
     maxlength: [100, 'Campaign name cannot exceed 100 characters']
   },
+  image: {
+    type: String,
+    required: false,
+    default: null
+  },
   advertiser: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
@@ -139,7 +144,7 @@ const campaignSchema = new mongoose.Schema({
     paymentMethod: {
       type: String,
       enum: ['stripe', 'paypal'],
-      required: true
+      required: false // Made optional since it's only known after payment
     },
     paymentDate: Date,
     refundAmount: {

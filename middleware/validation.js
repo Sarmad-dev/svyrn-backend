@@ -148,6 +148,7 @@ export const createStorySchema = Joi.object({
 // Campaign validation schemas
 export const createCampaignSchema = Joi.object({
   name: Joi.string().trim().min(1).max(100).required(),
+  image: Joi.string().optional(), // Accept base64 data
   objective: Joi.string().valid(
     'awareness', 'reach', 'traffic', 'engagement', 'app_installs',
     'video_views', 'lead_generation', 'messages', 'conversions', 'catalog_sales'
@@ -262,4 +263,115 @@ export const processPaymentSchema = Joi.object({
       then: Joi.required()
     })
   }).required()
+});
+
+// Ad Set validation schemas
+export const createAdSetSchema = Joi.object({
+  name: Joi.string().trim().min(1).max(100).required(),
+  budget: Joi.object({
+    type: Joi.string().valid('daily', 'lifetime').required(),
+    amount: Joi.number().min(1).required()
+  }).required(),
+  bidStrategy: Joi.string().valid('lowest_cost', 'cost_cap', 'bid_cap', 'target_cost').default('lowest_cost'),
+  bidAmount: Joi.number().min(0).optional(),
+  optimization: Joi.object({
+    goal: Joi.string().valid('impressions', 'clicks', 'conversions', 'reach', 'engagement').default('clicks'),
+    eventType: Joi.string().optional(),
+    conversionWindow: Joi.number().min(1).max(28).default(1)
+  }).optional(),
+  targeting: Joi.object({
+    demographics: Joi.object({
+      ageMin: Joi.number().min(13).max(65).optional(),
+      ageMax: Joi.number().min(13).max(65).optional(),
+      genders: Joi.array().items(Joi.string().valid('male', 'female', 'other')).optional(),
+      relationshipStatus: Joi.array().items(Joi.string()).optional(),
+      education: Joi.array().items(Joi.string()).optional(),
+      jobTitles: Joi.array().items(Joi.string()).optional(),
+      income: Joi.array().items(Joi.string()).optional()
+    }).optional(),
+    location: Joi.object({
+      countries: Joi.array().items(Joi.string()).optional(),
+      regions: Joi.array().items(Joi.string()).optional(),
+      cities: Joi.array().items(Joi.string()).optional(),
+      radius: Joi.number().min(1).max(1000).optional(),
+      coordinates: Joi.object({
+        latitude: Joi.number().min(-90).max(90).optional(),
+        longitude: Joi.number().min(-180).max(180).optional()
+      }).optional()
+    }).optional(),
+    interests: Joi.array().items(
+      Joi.object({
+        category: Joi.string().required(),
+        subcategory: Joi.string().optional(),
+        weight: Joi.number().min(1).max(10).default(1)
+      })
+    ).optional(),
+    behaviors: Joi.array().items(
+      Joi.object({
+        type: Joi.string().required(),
+        description: Joi.string().optional()
+      })
+    ).optional()
+  }).optional(),
+  placement: Joi.object({
+    platforms: Joi.array().items(Joi.string().valid('facebook', 'instagram', 'google', 'twitter', 'linkedin')).optional(),
+    devices: Joi.array().items(Joi.string().valid('desktop', 'mobile', 'tablet')).optional(),
+    positions: Joi.array().items(Joi.string().valid('feed', 'stories', 'reels', 'search', 'display')).optional()
+  }).optional(),
+  schedule: Joi.object({
+    startDate: Joi.date().iso().required(),
+    endDate: Joi.date().iso().min(Joi.ref('startDate')).required(),
+    adSchedule: Joi.array().items(
+      Joi.object({
+        day: Joi.string().valid('monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday').required(),
+        startTime: Joi.string().pattern(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/).optional(),
+        endTime: Joi.string().pattern(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/).optional()
+      })
+    ).optional()
+  }).required(),
+  frequencyCap: Joi.object({
+    impressions: Joi.number().min(1).optional(),
+    period: Joi.string().valid('day', 'week', 'month').optional()
+  }).optional()
+});
+
+// Ad validation schemas
+export const createAdSchema = Joi.object({
+  title: Joi.string().trim().min(1).max(100).required(),
+  description: Joi.string().trim().min(1).max(500).required(),
+  creative: Joi.object({
+    type: Joi.string().valid('image', 'video', 'carousel', 'slideshow', 'collection', 'text').required(),
+    media: Joi.array().items(
+      Joi.object({
+        url: Joi.string().optional(),
+        thumbnail: Joi.string().optional(),
+        caption: Joi.string().max(200).optional(),
+        altText: Joi.string().max(200).optional(),
+        duration: Joi.number().min(0).optional(),
+        order: Joi.number().min(0).optional()
+      })
+    ).optional(),
+    primaryText: Joi.string().max(125).required(),
+    headline: Joi.string().max(40).required(),
+    callToAction: Joi.string().valid(
+      'learn_more', 'shop_now', 'sign_up', 'download', 'contact_us', 'book_now',
+      'get_quote', 'apply_now', 'donate_now', 'subscribe'
+    ).default('learn_more'),
+    destinationUrl: Joi.string().uri().optional(),
+    dynamicAdCreative: Joi.boolean().default(false),
+    brandSafety: Joi.boolean().default(true)
+  }).required(),
+  budget: Joi.object({
+    type: Joi.string().valid('daily', 'lifetime').required(),
+    amount: Joi.number().min(1).required(),
+    currency: Joi.string().valid('USD', 'EUR', 'GBP', 'JPY', 'CAD', 'AUD').default('USD'),
+    bidStrategy: Joi.string().valid('lowest_cost', 'cost_cap', 'bid_cap').default('lowest_cost')
+  }).required(),
+  duration: Joi.number().min(1).required(),
+  schedule: Joi.object({
+    startDate: Joi.date().iso().required(),
+    endDate: Joi.date().iso().min(Joi.ref('startDate')).required(),
+    timezone: Joi.string().default('UTC')
+  }).required(),
+  tags: Joi.array().items(Joi.string()).optional()
 });

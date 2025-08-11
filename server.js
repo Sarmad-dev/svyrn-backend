@@ -124,7 +124,7 @@ app.use("/api/status", statusRoutes);
 app.use("/api/recommendations", recommendationRoutes);
 app.use("/api/stories", storyRoutes);
 app.use('/api/search', searchRoutes);
-app.use("/api/campaign", campaignRoutes);
+app.use("/api/campaigns", campaignRoutes);
 
 // Health check
 app.get("/api/health", (req, res) => {

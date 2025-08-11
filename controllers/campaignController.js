@@ -4,6 +4,8 @@ import Ad from '../models/Ad.js';
 import User from '../models/User.js';
 import stripe from '../utils/stripe.js';
 import paypal from '../utils/paypal.js';
+import cloudinary from "../utils/cloudinary.js";
+import { getMimeTypeFromBase64, getFileCategory } from "../services/ImageUrlCreate.js";
 
 // @desc    Create a new campaign
 // @route   POST /api/campaigns
@@ -12,6 +14,7 @@ export const createCampaign = async (req, res) => {
   try {
     const {
       name,
+      image,
       objective,
       budget,
       schedule,
@@ -26,8 +29,38 @@ export const createCampaign = async (req, res) => {
     const durationDays = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24));
     const totalCost = budget.type === 'daily' ? budget.amount * durationDays : budget.amount;
 
+    let campaignImageUrl = null;
+
+    // Handle image upload if provided
+    if (image) {
+      try {
+        const mimeType = getMimeTypeFromBase64(image);
+        const fileCategory = getFileCategory(mimeType);
+
+        // Upload to Cloudinary
+        const result = await cloudinary.uploader.upload(image, {
+          resource_type: fileCategory,
+          folder: 'campaigns', // Organize by folder
+          transformation: [
+            { width: 800, height: 600, crop: 'limit' }, // Limit dimensions
+            { quality: 'auto:good' } // Optimize quality
+          ]
+        });
+
+        campaignImageUrl = result.secure_url;
+      } catch (uploadError) {
+        console.error('Image upload error:', uploadError);
+        return res.status(400).json({
+          status: 'error',
+          message: 'Failed to upload campaign image',
+          error: uploadError.message
+        });
+      }
+    }
+
     const campaign = await Campaign.create({
       name,
+      image: campaignImageUrl, // Store Cloudinary URL
       advertiser: req.user.id,
       objective,
       budget: {
@@ -372,7 +405,7 @@ export const updateCampaign = async (req, res) => {
   }
 };
 
-// @desc    Get all campaigns for user
+// @desc    Get all campaigns for user with optimized data structure
 // @route   GET /api/campaigns
 // @access  Private
 export const getCampaigns = async (req, res) => {
@@ -388,9 +421,62 @@ export const getCampaigns = async (req, res) => {
       })
       .sort({ createdAt: -1 });
 
+    // Transform campaigns to include calculated performance metrics
+    const transformedCampaigns = campaigns.map(campaign => {
+      // Calculate aggregated performance from ad sets and ads
+      let totalImpressions = 0;
+      let totalClicks = 0;
+      let totalSpend = 0;
+      let totalConversions = 0;
+      let totalCpc = 0;
+      let adCount = 0;
+
+      campaign.adSets.forEach(adSet => {
+        if (adSet.ads && adSet.ads.length > 0) {
+          adSet.ads.forEach(ad => {
+            if (ad.performance) {
+              totalImpressions += Number(ad.performance.impressions || 0);
+              totalClicks += Number(ad.performance.clicks || 0);
+              totalSpend += Number(ad.performance.spend || 0);
+              totalConversions += Number(ad.performance.conversions || 0);
+              totalCpc += Number(ad.performance.cpc || 0);
+              adCount++;
+            }
+          });
+        }
+      });
+
+      // Calculate average CPC
+      const averageCpc = adCount > 0 ? totalCpc / adCount : 0;
+
+      return {
+        _id: campaign._id,
+        name: campaign.name,
+        objective: campaign.objective,
+        status: campaign.status,
+        createdAt: campaign.createdAt,
+        updatedAt: campaign.updatedAt,
+        budget: campaign.budget,
+        schedule: campaign.schedule,
+        targeting: campaign.targeting,
+        payment: campaign.payment,
+        performance: {
+          impressions: totalImpressions,
+          clicks: totalClicks,
+          spend: totalSpend,
+          conversions: totalConversions,
+          cpc: averageCpc,
+          ctr: totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0,
+          conversionRate: totalClicks > 0 ? (totalConversions / totalClicks) * 100 : 0
+        },
+        adSets: campaign.adSets,
+        advertiser: campaign.advertiser
+      };
+    });
+
     res.status(200).json({
       status: 'success',
-      data: { campaigns }
+      data: { campaigns: transformedCampaigns }
     });
   } catch (error) {
     console.error('Get campaigns error:', error);
@@ -401,6 +487,182 @@ export const getCampaigns = async (req, res) => {
     });
   }
 };
+
+// @desc    Get aggregated analytics for all user campaigns
+// @route   GET /api/campaigns/analytics/overview
+// @access  Private
+export const getCampaignsOverview = async (req, res) => {
+  try {
+    const campaigns = await Campaign.find({ advertiser: req.user.id })
+      .populate({
+        path: 'adSets',
+        populate: {
+          path: 'ads',
+          select: 'performance'
+        }
+      });
+
+    // Calculate overall metrics
+    let totalImpressions = 0;
+    let totalClicks = 0;
+    let totalSpend = 0;
+    let totalConversions = 0;
+    let totalCampaigns = campaigns.length;
+    let activeCampaigns = 0;
+    let totalBudget = 0;
+
+    // Aggregate performance data
+    campaigns.forEach(campaign => {
+      if (campaign.status === 'active') activeCampaigns++;
+      
+      totalBudget += Number(campaign.budget?.amount || 0);
+      
+      campaign.adSets.forEach(adSet => {
+        if (adSet.ads && adSet.ads.length > 0) {
+          adSet.ads.forEach(ad => {
+            if (ad.performance) {
+              totalImpressions += Number(ad.performance.impressions || 0);
+              totalClicks += Number(ad.performance.clicks || 0);
+              totalSpend += Number(ad.performance.spend || 0);
+              totalConversions += Number(ad.performance.conversions || 0);
+            }
+          });
+        }
+      });
+    });
+
+    // Calculate derived metrics
+    const ctr = totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0;
+    const conversionRate = totalClicks > 0 ? (totalConversions / totalClicks) * 100 : 0;
+    const averageCpc = totalClicks > 0 ? totalSpend / totalClicks : 0;
+    const roi = totalSpend > 0 ? ((totalConversions * 100 - totalSpend) / totalSpend) * 100 : 0;
+
+    // Get performance trends (last 12 months)
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const now = new Date();
+    const trends = Array.from({ length: 12 }, (_, idx) => {
+      const monthIndex = (now.getMonth() - (11 - idx) + 12) % 12;
+      const monthName = monthNames[monthIndex];
+      
+      // Filter campaigns created in this month
+      const monthCampaigns = campaigns.filter(campaign => {
+        const created = new Date(campaign.createdAt);
+        return created.getMonth() === monthIndex && created.getFullYear() === now.getFullYear();
+      });
+
+      let monthImpressions = 0;
+      let monthClicks = 0;
+      
+      monthCampaigns.forEach(campaign => {
+        campaign.adSets.forEach(adSet => {
+          if (adSet.ads && adSet.ads.length > 0) {
+            adSet.ads.forEach(ad => {
+              if (ad.performance) {
+                monthImpressions += Number(ad.performance.impressions || 0);
+                monthClicks += Number(ad.performance.clicks || 0);
+              }
+            });
+          }
+        });
+      });
+
+      return {
+        month: monthName,
+        impressions: monthImpressions,
+        clicks: monthClicks
+      };
+    });
+
+    // Get objective distribution
+    const objectiveCounts = campaigns.reduce((acc, campaign) => {
+      const objective = campaign.objective || 'unknown';
+      acc[objective] = (acc[objective] || 0) + 1;
+      return acc;
+    }, {});
+
+    const objectiveDistribution = Object.entries(objectiveCounts)
+      .filter(([key]) => key !== 'unknown')
+      .map(([name, value]) => ({
+        name: name.charAt(0).toUpperCase() + name.slice(1).replace('_', ' '),
+        value,
+        color: getObjectiveColor(name)
+      }));
+
+    // Get top performing campaigns
+    const campaignPerformance = campaigns.map(campaign => {
+      let impressions = 0;
+      let clicks = 0;
+      let spend = 0;
+      
+      campaign.adSets.forEach(adSet => {
+        if (adSet.ads && adSet.ads.length > 0) {
+          adSet.ads.forEach(ad => {
+            if (ad.performance) {
+              impressions += Number(ad.performance.impressions || 0);
+              clicks += Number(ad.performance.clicks || 0);
+              spend += Number(ad.performance.spend || 0);
+            }
+          });
+        }
+      });
+
+      return {
+        _id: campaign._id,
+        name: campaign.name,
+        impressions,
+        clicks,
+        spend,
+        ctr: impressions > 0 ? (clicks / impressions) * 100 : 0
+      };
+    });
+
+    const topPerformers = campaignPerformance
+      .sort((a, b) => b.clicks - a.clicks)
+      .slice(0, 5);
+
+    res.status(200).json({
+      status: 'success',
+      data: {
+        overview: {
+          totalCampaigns,
+          activeCampaigns,
+          totalBudget,
+          totalImpressions,
+          totalClicks,
+          totalSpend,
+          totalConversions,
+          ctr: Math.round(ctr * 100) / 100,
+          conversionRate: Math.round(conversionRate * 100) / 100,
+          averageCpc: Math.round(averageCpc * 100) / 100,
+          roi: Math.round(roi * 100) / 100
+        },
+        trends,
+        objectiveDistribution,
+        topPerformers
+      }
+    });
+  } catch (error) {
+    console.error('Get campaigns overview error:', error);
+    res.status(500).json({
+      status: 'error',
+      message: 'Error fetching campaigns overview',
+      error: error.message
+    });
+  }
+};
+
+// Helper function to get color for objectives
+function getObjectiveColor(objective) {
+  const colors = {
+    awareness: '#4dabf7',
+    reach: '#6f3ef0',
+    traffic: '#34d399',
+    engagement: '#f59e0b',
+    lead_generation: '#ef4444',
+    conversions: '#2f2f2f'
+  };
+  return colors[objective] || '#4dabf7';
+}
 
 // @desc    Get campaign by ID
 // @route   GET /api/campaigns/:id
@@ -574,6 +836,126 @@ export const getCampaignAnalytics = async (req, res) => {
     res.status(500).json({
       status: 'error',
       message: 'Error fetching campaign analytics',
+      error: error.message
+    });
+  }
+};
+
+// @desc    Delete campaign
+// @route   DELETE /api/campaigns/:id
+// @access  Private
+export const deleteCampaign = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const campaign = await Campaign.findOne({
+      _id: id,
+      advertiser: req.user.id
+    });
+
+    if (!campaign) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'Campaign not found'
+      });
+    }
+
+    // Check if campaign can be deleted (e.g., not active)
+    if (campaign.status === 'active') {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Cannot delete active campaign. Please pause it first.'
+      });
+    }
+
+    // Delete associated ad sets and ads
+    await AdSet.deleteMany({ campaign: id });
+    await Ad.deleteMany({ campaign: id });
+    
+    // Delete the campaign
+    await Campaign.findByIdAndDelete(id);
+
+    res.status(200).json({
+      status: 'success',
+      message: 'Campaign deleted successfully'
+    });
+  } catch (error) {
+    console.error('Delete campaign error:', error);
+    res.status(500).json({
+      status: 'error',
+      message: 'Error deleting campaign',
+      error: error.message
+    });
+  }
+};
+
+// @desc    Get campaign ad sets
+// @route   GET /api/campaigns/:campaignId/ad-sets
+// @access  Private
+export const getCampaignAdSets = async (req, res) => {
+  try {
+    const { campaignId } = req.params;
+
+    // Verify campaign ownership
+    const campaign = await Campaign.findOne({
+      _id: campaignId,
+      advertiser: req.user.id
+    });
+
+    if (!campaign) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'Campaign not found'
+      });
+    }
+
+    const adSets = await AdSet.find({ campaign: campaignId })
+      .populate('ads', 'title status performance')
+      .sort({ createdAt: -1 });
+
+    res.status(200).json({
+      status: 'success',
+      data: { adSets }
+    });
+  } catch (error) {
+    console.error('Get campaign ad sets error:', error);
+    res.status(500).json({
+      status: 'error',
+      message: 'Error fetching ad sets',
+      error: error.message
+    });
+  }
+};
+
+// @desc    Get ad set ads
+// @route   GET /api/campaigns/ad-sets/:adSetId/ads
+// @access  Private
+export const getAdSetAds = async (req, res) => {
+  try {
+    const { adSetId } = req.params;
+
+    // Verify ad set ownership through campaign
+    const adSet = await AdSet.findById(adSetId).populate('campaign', 'advertiser');
+    
+    if (!adSet || adSet.campaign.advertiser.toString() !== req.user.id) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'Ad set not found'
+      });
+    }
+
+    const ads = await Ad.find({ adSet: adSetId })
+      .sort({ createdAt: -1 });
+
+    res.status(200).json({
+      status: 'success',
+      data: { ads }
+    });
+  } catch (error) {
+    console.error('Get ad set ads error:', error);
+    res.status(500).json({
+      status: 'error',
+      message: 'Error fetching ads',
       error: error.message
     });
   }
