@@ -125,6 +125,8 @@ const campaignSchema = new mongoose.Schema({
   payment: {
     stripePaymentIntentId: String,
     stripeCustomerId: String,
+    paypalOrderId: String,
+    paypalPayerId: String,
     totalCost: {
       type: Number,
       required: true
@@ -133,6 +135,11 @@ const campaignSchema = new mongoose.Schema({
       type: String,
       enum: ['pending', 'succeeded', 'failed', 'cancelled'],
       default: 'pending'
+    },
+    paymentMethod: {
+      type: String,
+      enum: ['stripe', 'paypal'],
+      required: true
     },
     paymentDate: Date,
     refundAmount: {
@@ -178,6 +185,12 @@ const campaignSchema = new mongoose.Schema({
       default: Date.now
     }
   },
+  // Facebook Ads specific fields
+  campaignBudgetOptimization: {
+    type: Boolean,
+    default: false
+  },
+  specialAdCategories: [String],
   isActive: {
     type: Boolean,
     default: true
@@ -214,6 +227,31 @@ campaignSchema.methods.isCurrentlyActive = function() {
   return this.status === 'active' && 
          now >= this.schedule.startDate && 
          now <= this.schedule.endDate;
+};
+
+// Method to update performance metrics
+campaignSchema.methods.updatePerformance = function() {
+  // Calculate CTR
+  if (this.performance.impressions > 0) {
+    this.performance.ctr = (this.performance.clicks / this.performance.impressions) * 100;
+  }
+  
+  // Calculate CPM (cost per 1000 impressions)
+  if (this.performance.impressions > 0) {
+    this.performance.cpm = (this.performance.spend / this.performance.impressions) * 1000;
+  }
+  
+  // Calculate CPC (cost per click)
+  if (this.performance.clicks > 0) {
+    this.performance.cpc = this.performance.spend / this.performance.clicks;
+  }
+  
+  // Calculate conversion rate
+  if (this.performance.clicks > 0) {
+    this.performance.conversionRate = (this.performance.conversions / this.performance.clicks) * 100;
+  }
+  
+  this.performance.lastUpdated = new Date();
 };
 
 const Campaign = mongoose.model('Campaign', campaignSchema);

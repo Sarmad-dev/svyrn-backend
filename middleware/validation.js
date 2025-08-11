@@ -144,3 +144,122 @@ export const createStorySchema = Joi.object({
     url: Joi.string().uri().optional()
   }).optional()
 });
+
+// Campaign validation schemas
+export const createCampaignSchema = Joi.object({
+  name: Joi.string().trim().min(1).max(100).required(),
+  objective: Joi.string().valid(
+    'awareness', 'reach', 'traffic', 'engagement', 'app_installs',
+    'video_views', 'lead_generation', 'messages', 'conversions', 'catalog_sales'
+  ).required(),
+  budget: Joi.object({
+    type: Joi.string().valid('daily', 'lifetime').required(),
+    amount: Joi.number().min(1).required(),
+    currency: Joi.string().valid('USD', 'EUR', 'GBP', 'JPY', 'CAD', 'AUD').default('USD')
+  }).required(),
+  schedule: Joi.object({
+    startDate: Joi.date().iso().required(),
+    endDate: Joi.date().iso().min(Joi.ref('startDate')).required()
+  }).required(),
+  targeting: Joi.object({
+    demographics: Joi.object({
+      ageMin: Joi.number().min(13).max(65).required(),
+      ageMax: Joi.number().min(Joi.ref('ageMin')).max(65).required(),
+      genders: Joi.array().items(Joi.string().valid('male', 'female', 'other')).optional(),
+      languages: Joi.array().items(Joi.string()).optional()
+    }).required(),
+    location: Joi.object({
+      countries: Joi.array().items(Joi.string()).optional(),
+      regions: Joi.array().items(Joi.string()).optional(),
+      cities: Joi.array().items(Joi.string()).optional(),
+      radius: Joi.number().min(1).max(1000).optional(),
+      coordinates: Joi.object({
+        latitude: Joi.number().min(-90).max(90).optional(),
+        longitude: Joi.number().min(-180).max(180).optional()
+      }).optional()
+    }).optional(),
+    interests: Joi.array().items(
+      Joi.object({
+        category: Joi.string().required(),
+        subcategory: Joi.string().optional(),
+        weight: Joi.number().min(1).max(10).default(1)
+      })
+    ).optional(),
+    behaviors: Joi.array().items(
+      Joi.object({
+        type: Joi.string().required(),
+        description: Joi.string().optional()
+      })
+    ).optional()
+  }).optional(),
+  campaignBudgetOptimization: Joi.boolean().default(false),
+  specialAdCategories: Joi.array().items(Joi.string()).optional()
+});
+
+export const updateCampaignSchema = Joi.object({
+  name: Joi.string().trim().min(1).max(100).optional(),
+  objective: Joi.string().valid(
+    'awareness', 'reach', 'traffic', 'engagement', 'app_installs',
+    'video_views', 'lead_generation', 'messages', 'conversions', 'catalog_sales'
+  ).optional(),
+  budget: Joi.object({
+    type: Joi.string().valid('daily', 'lifetime').optional(),
+    amount: Joi.number().min(1).optional(),
+    currency: Joi.string().valid('USD', 'EUR', 'GBP', 'JPY', 'CAD', 'AUD').optional()
+  }).optional(),
+  schedule: Joi.object({
+    startDate: Joi.date().iso().optional(),
+    endDate: Joi.date().iso().min(Joi.ref('startDate')).optional()
+  }).optional(),
+  targeting: Joi.object({
+    demographics: Joi.object({
+      ageMin: Joi.number().min(13).max(65).optional(),
+      ageMax: Joi.number().min(Joi.ref('ageMin')).max(65).optional(),
+      genders: Joi.array().items(Joi.string().valid('male', 'female', 'other')).optional(),
+      languages: Joi.array().items(Joi.string()).optional()
+    }).optional(),
+    location: Joi.object({
+      countries: Joi.array().items(Joi.string()).optional(),
+      regions: Joi.array().items(Joi.string()).optional(),
+      cities: Joi.array().items(Joi.string()).optional(),
+      radius: Joi.number().min(1).max(1000).optional(),
+      coordinates: Joi.object({
+        latitude: Joi.number().min(-90).max(90).optional(),
+        longitude: Joi.number().min(-180).max(180).optional()
+      }).optional()
+    }).optional(),
+    interests: Joi.array().items(
+      Joi.object({
+        category: Joi.string().required(),
+        subcategory: Joi.string().optional(),
+        weight: Joi.number().min(1).max(10).default(1)
+      })
+    ).optional(),
+    behaviors: Joi.array().items(
+      Joi.object({
+        type: Joi.string().required(),
+        description: Joi.string().optional()
+      })
+    ).optional()
+  }).optional(),
+  campaignBudgetOptimization: Joi.boolean().optional(),
+  specialAdCategories: Joi.array().items(Joi.string()).optional()
+});
+
+export const processPaymentSchema = Joi.object({
+  paymentMethod: Joi.string().valid('stripe', 'paypal').required(),
+  paymentData: Joi.object({
+    paymentMethodId: Joi.string().when('paymentMethod', {
+      is: 'stripe',
+      then: Joi.required()
+    }),
+    orderID: Joi.string().when('paymentMethod', {
+      is: 'paypal',
+      then: Joi.required()
+    }),
+    payerID: Joi.string().when('paymentMethod', {
+      is: 'paypal',
+      then: Joi.required()
+    })
+  }).required()
+});

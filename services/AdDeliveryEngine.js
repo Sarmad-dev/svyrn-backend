@@ -1,344 +1,332 @@
 import Ad from '../models/Ad.js';
 import AdSet from '../models/AdSet.js';
 import Campaign from '../models/Campaign.js';
-import AdDelivery from '../models/AdDelivery.js';
+import AdInteraction from '../models/AdInteraction.js';
 import User from '../models/User.js';
-import UserInteraction from '../models/UserInteraction.js';
 
 class AdDeliveryEngine {
   constructor() {
-    this.deliveryWeights = {
-      targeting: 0.4,     // How well user matches targeting
-      bidAmount: 0.25,    // Advertiser bid amount
-      relevance: 0.2,     // Ad relevance to user
-      freshness: 0.1,     // How new the ad is
-      performance: 0.05   // Historical ad performance
-    };
+    this.activeAds = new Map();
+    this.userAdHistory = new Map();
+    this.loadActiveAds();
   }
 
-  // Main method to get ads for user feed
-  async getAdsForUser(userId, placement = 'feed', limit = 3) {
+  // Load all active ads into memory for fast access
+  async loadActiveAds() {
+    try {
+      const activeAds = await Ad.find({
+        status: 'active',
+        'delivery.isDelivering': true,
+        'schedule.startDate': { $lte: new Date() },
+        'schedule.endDate': { $gte: new Date() }
+      }).populate('adSet campaign');
+
+      this.activeAds.clear();
+      activeAds.forEach(ad => {
+        this.activeAds.set(ad._id.toString(), ad);
+      });
+
+      console.log(`Loaded ${activeAds.length} active ads`);
+    } catch (error) {
+      console.error('Error loading active ads:', error);
+    }
+  }
+
+  // Get ads for a specific user based on targeting
+  async getAdsForUser(userId, placement = 'feed', limit = 5) {
     try {
       const user = await User.findById(userId);
       if (!user) return [];
 
-      // Get user context
-      const userContext = await this.getUserContext(user);
-      
-      // Get eligible ads
-      const eligibleAds = await this.getEligibleAds(userContext, placement);
-      
-      // Score and rank ads
-      const scoredAds = await this.scoreAds(eligibleAds, userContext);
-      
-      // Apply frequency capping
-      const filteredAds = await this.applyFrequencyCapping(scoredAds, userId);
-      
-      // Run ad auction
-      const selectedAds = this.runAdAuction(filteredAds, limit);
-      
-      // Record ad deliveries
-      await this.recordAdDeliveries(selectedAds, userId, placement, userContext);
-      
-      return selectedAds.map(ad => ({
-        ...ad.ad.toObject(),
-        deliveryScore: ad.score,
-        placement,
-        isAd: true
-      }));
-      
+      const eligibleAds = [];
+      const now = new Date();
+
+      for (const [adId, ad] of this.activeAds) {
+        if (this.isAdEligibleForUser(ad, user, placement)) {
+          eligibleAds.push(ad);
+        }
+      }
+
+      // Sort by relevance score and select top ads
+      const scoredAds = eligibleAds
+        .map(ad => ({
+          ad,
+          score: this.calculateRelevanceScore(ad, user)
+        }))
+        .sort((a, b) => b.score - a.score)
+        .slice(0, limit)
+        .map(item => item.ad);
+
+      return scoredAds;
     } catch (error) {
-      console.error('Ad delivery error:', error);
+      console.error('Error getting ads for user:', error);
       return [];
     }
   }
 
-  // Get user context for ad targeting
-  async getUserContext(user) {
-    // Get recent user interactions
-    const recentInteractions = await UserInteraction.find({
-      user: user._id,
-      createdAt: { $gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) } // Last 30 days
-    }).limit(1000);
+  // Check if an ad is eligible for a specific user
+  isAdEligibleForUser(ad, user, placement) {
+    // Check placement
+    if (!ad.adSet.placement.platforms.includes(placement)) {
+      return false;
+    }
 
-    // Extract interests from interactions
-    const interests = this.extractUserInterests(recentInteractions);
+    // Check if user has already seen this ad too many times
+    const userHistory = this.userAdHistory.get(user._id.toString()) || new Map();
+    const adHistory = userHistory.get(ad._id.toString()) || { impressions: 0, clicks: 0 };
     
-    // Get user demographics
-    const demographics = {
-      age: user.dateOfBirth ? this.calculateAge(user.dateOfBirth) : null,
-      location: user.location || null,
-      language: user.language || 'en'
-    };
+    if (adHistory.impressions >= ad.adSet.frequencyCap.impressions) {
+      return false;
+    }
 
-    return {
-      user,
-      demographics,
-      interests,
-      recentInteractions,
-      currentTime: new Date()
-    };
+    // Check targeting
+    if (!this.matchesTargeting(ad.adSet.targeting, user)) {
+      return false;
+    }
+
+    // Check budget
+    if (ad.delivery.remainingBudget <= 0) {
+      return false;
+    }
+
+    return true;
   }
 
-  // Get ads eligible for delivery
-  async getEligibleAds(userContext, placement) {
-    const now = new Date();
-    
-    const eligibleAds = await Ad.find({
-      status: 'active',
-      isActive: true,
-      'schedule.startDate': { $lte: now },
-      'schedule.endDate': { $gte: now },
-      'placement.platforms': placement
-    })
-    .populate('campaign')
-    .populate('adSet')
-    .populate('creative');
+  // Check if user matches ad set targeting
+  matchesTargeting(targeting, user) {
+    // Demographics targeting
+    if (targeting.demographics) {
+      const userAge = this.calculateUserAge(user.dateOfBirth);
+      if (userAge < targeting.demographics.ageMin || userAge > targeting.demographics.ageMax) {
+        return false;
+      }
 
-    // Filter by targeting criteria
-    return eligibleAds.filter(ad => 
-      this.matchesTargeting(ad, userContext)
-    );
-  }
-
-  // Check if user matches ad targeting
-  matchesTargeting(ad, userContext) {
-    const { demographics, interests } = userContext;
-    const targeting = ad.adSet.targeting;
-
-    // Age targeting
-    if (targeting.demographics.ageMin && targeting.demographics.ageMax) {
-      if (!demographics.age || 
-          demographics.age < targeting.demographics.ageMin || 
-          demographics.age > targeting.demographics.ageMax) {
+      if (targeting.demographics.genders.length > 0 && 
+          !targeting.demographics.genders.includes(user.gender)) {
         return false;
       }
     }
 
-    // Gender targeting
-    if (targeting.demographics.genders && targeting.demographics.genders.length > 0) {
-      if (!targeting.demographics.genders.includes(userContext.user.gender)) {
+    // Location targeting
+    if (targeting.location && user.location) {
+      if (targeting.location.countries.length > 0 && 
+          !targeting.location.countries.includes(user.location.country)) {
         return false;
       }
     }
 
-    // Interest targeting
+    // Interests targeting (simplified - you can expand this)
     if (targeting.interests && targeting.interests.length > 0) {
-      const hasMatchingInterest = targeting.interests.some(targetInterest =>
-        interests.some(userInterest => 
-          userInterest.keyword.toLowerCase().includes(targetInterest.toLowerCase())
-        )
+      const userInterests = user.interests || [];
+      const hasMatchingInterest = targeting.interests.some(interest => 
+        userInterests.includes(interest.category)
       );
       if (!hasMatchingInterest) {
         return false;
       }
     }
 
-    // Location targeting (simplified)
-    if (targeting.location.countries && targeting.location.countries.length > 0) {
-      // This would need proper geolocation implementation
-      // For now, we'll assume it matches
-    }
-
     return true;
   }
 
-  // Score ads for ranking
-  async scoreAds(ads, userContext) {
-    const scoredAds = [];
-
-    for (const ad of ads) {
-      const score = await this.calculateAdScore(ad, userContext);
-      scoredAds.push({ ad, score });
-    }
-
-    return scoredAds.sort((a, b) => b.score - a.score);
-  }
-
-  // Calculate individual ad score
-  async calculateAdScore(ad, userContext) {
+  // Calculate relevance score for ad ranking
+  calculateRelevanceScore(ad, user) {
     let score = 0;
 
-    // Targeting score
-    const targetingScore = this.calculateTargetingScore(ad, userContext);
-    score += targetingScore * this.deliveryWeights.targeting;
+    // Base score
+    score += 10;
 
-    // Bid amount score (normalized)
-    const bidScore = Math.min(ad.adSet.bidAmount / 10, 1); // Normalize to 0-1
-    score += bidScore * this.deliveryWeights.bidAmount;
-
-    // Relevance score
-    const relevanceScore = this.calculateRelevanceScore(ad, userContext);
-    score += relevanceScore * this.deliveryWeights.relevance;
-
-    // Freshness score
-    const freshnessScore = this.calculateFreshnessScore(ad);
-    score += freshnessScore * this.deliveryWeights.freshness;
+    // Interest matching
+    if (ad.adSet.targeting.interests && user.interests) {
+      const matchingInterests = ad.adSet.targeting.interests.filter(interest =>
+        user.interests.includes(interest.category)
+      );
+      score += matchingInterests.length * 5;
+    }
 
     // Performance score
-    const performanceScore = this.calculatePerformanceScore(ad);
-    score += performanceScore * this.deliveryWeights.performance;
-
-    return Math.max(0, Math.min(1, score));
-  }
-
-  // Calculate targeting match score
-  calculateTargetingScore(ad, userContext) {
-    let score = 0;
-    let factors = 0;
-
-    const targeting = ad.adSet.targeting;
-    const { demographics, interests } = userContext;
-
-    // Age match
-    if (targeting.demographics.ageMin && targeting.demographics.ageMax && demographics.age) {
-      const ageRange = targeting.demographics.ageMax - targeting.demographics.ageMin;
-      const ageDistance = Math.abs(demographics.age - (targeting.demographics.ageMin + ageRange / 2));
-      score += Math.max(0, 1 - (ageDistance / (ageRange / 2)));
-      factors++;
+    if (ad.performance.ctr > 0) {
+      score += Math.min(ad.performance.ctr * 10, 20);
     }
 
-    // Interest match
-    if (targeting.interests && targeting.interests.length > 0) {
-      const matchingInterests = targeting.interests.filter(targetInterest =>
-        interests.some(userInterest => 
-          userInterest.keyword.toLowerCase().includes(targetInterest.toLowerCase())
-        )
-      );
-      score += matchingInterests.length / targeting.interests.length;
-      factors++;
-    }
+    // Freshness score (newer ads get higher scores)
+    const daysSinceCreation = (new Date() - new Date(ad.createdAt)) / (1000 * 60 * 60 * 24);
+    score += Math.max(0, 10 - daysSinceCreation);
 
-    return factors > 0 ? score / factors : 0.5;
+    return score;
   }
 
-  // Calculate ad relevance score
-  calculateRelevanceScore(ad, userContext) {
-    // This would analyze ad content against user interests
-    // For now, return a base score
-    return 0.5;
-  }
+  // Record ad impression
+  async recordImpression(adId, userId, context = {}) {
+    try {
+      const ad = this.activeAds.get(adId);
+      if (!ad) return;
 
-  // Calculate ad freshness score
-  calculateFreshnessScore(ad) {
-    const ageHours = (Date.now() - ad.createdAt) / (1000 * 60 * 60);
-    return Math.max(0, 1 - (ageHours / (7 * 24))); // Decay over 7 days
-  }
+      // Update ad performance
+      ad.performance.impressions += 1;
+      ad.updatePerformance();
 
-  // Calculate ad performance score
-  calculatePerformanceScore(ad) {
-    const performance = ad.performance;
-    if (performance.impressions === 0) return 0.5;
+      // Update ad set performance
+      const adSet = await AdSet.findById(ad.adSet);
+      if (adSet) {
+        adSet.performance.impressions += 1;
+        adSet.updatePerformance();
+        await adSet.save();
+      }
 
-    const ctr = performance.clicks / performance.impressions;
-    return Math.min(ctr * 20, 1); // Normalize CTR to 0-1 scale
-  }
+      // Update campaign performance
+      const campaign = await Campaign.findById(ad.campaign);
+      if (campaign) {
+        campaign.performance.impressions += 1;
+        campaign.updatePerformance();
+        await campaign.save();
+      }
 
-  // Apply frequency capping
-  async applyFrequencyCapping(scoredAds, userId) {
-    const filtered = [];
+      // Save ad performance
+      await ad.save();
 
-    for (const scoredAd of scoredAds) {
-      const ad = scoredAd.ad;
-      const frequencyCap = ad.adSet.frequencyCap;
-
-      // Check recent deliveries
-      const recentDeliveries = await AdDelivery.countDocuments({
-        ad: ad._id,
+      // Record interaction
+      await AdInteraction.create({
+        ad: adId,
+        adSet: ad.adSet,
+        campaign: ad.campaign,
         user: userId,
-        deliveredAt: {
-          $gte: this.getFrequencyCapWindow(frequencyCap.timeWindow)
-        }
+        type: 'impression',
+        userAgent: context.userAgent,
+        ipAddress: context.ipAddress,
+        device: context.device,
+        platform: context.platform
       });
 
-      if (recentDeliveries < frequencyCap.impressions) {
-        filtered.push(scoredAd);
-      }
-    }
+      // Update user history
+      this.updateUserHistory(userId, adId, 'impression');
 
-    return filtered;
-  }
-
-  // Get frequency cap time window
-  getFrequencyCapWindow(timeWindow) {
-    const now = new Date();
-    switch (timeWindow) {
-      case 'hour':
-        return new Date(now.getTime() - 60 * 60 * 1000);
-      case 'day':
-        return new Date(now.getTime() - 24 * 60 * 60 * 1000);
-      case 'week':
-        return new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-      default:
-        return new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    } catch (error) {
+      console.error('Error recording impression:', error);
     }
   }
 
-  // Run ad auction to select final ads
-  runAdAuction(scoredAds, limit) {
-    // Simple auction: select top scoring ads
-    return scoredAds.slice(0, limit);
-  }
+  // Record ad click
+  async recordClick(adId, userId, context = {}) {
+    try {
+      const ad = this.activeAds.get(adId);
+      if (!ad) return;
 
-  // Record ad deliveries for tracking
-  async recordAdDeliveries(selectedAds, userId, placement, userContext) {
-    const deliveries = selectedAds.map((scoredAd, index) => ({
-      ad: scoredAd.ad._id,
-      user: userId,
-      campaign: scoredAd.ad.campaign,
-      adSet: scoredAd.ad.adSet,
-      placement,
-      position: index + 1,
-      userContext: {
-        location: userContext.demographics.location,
-        device: 'web', // This would come from request headers
-        timeOfDay: new Date().getHours(),
-        dayOfWeek: new Date().getDay()
-      },
-      targetingScore: {
-        overall: scoredAd.score
-      },
-      deliveredAt: new Date()
-    }));
+      // Update ad performance
+      ad.performance.clicks += 1;
+      ad.updatePerformance();
 
-    await AdDelivery.insertMany(deliveries);
-  }
-
-  // Extract user interests from interactions
-  extractUserInterests(interactions) {
-    const interestMap = new Map();
-
-    interactions.forEach(interaction => {
-      if (interaction.metadata && interaction.metadata.topics) {
-        interaction.metadata.topics.forEach(topic => {
-          const current = interestMap.get(topic) || { keyword: topic, score: 0, frequency: 0 };
-          current.score += this.getInteractionWeight(interaction.interactionType);
-          current.frequency += 1;
-          interestMap.set(topic, current);
-        });
+      // Update ad set performance
+      const adSet = await AdSet.findById(ad.adSet);
+      if (adSet) {
+        adSet.performance.clicks += 1;
+        adSet.updatePerformance();
+        await adSet.save();
       }
-    });
 
-    return Array.from(interestMap.values())
-      .sort((a, b) => b.score - a.score)
-      .slice(0, 20); // Top 20 interests
+      // Update campaign performance
+      const campaign = await Campaign.findById(ad.campaign);
+      if (campaign) {
+        campaign.performance.clicks += 1;
+        campaign.updatePerformance();
+        await campaign.save();
+      }
+
+      // Save ad performance
+      await ad.save();
+
+      // Record interaction
+      await AdInteraction.create({
+        ad: adId,
+        adSet: ad.adSet,
+        campaign: ad.campaign,
+        user: userId,
+        type: 'click',
+        userAgent: context.userAgent,
+        ipAddress: context.ipAddress,
+        device: context.device,
+        platform: context.platform
+      });
+
+      // Update user history
+      this.updateUserHistory(userId, adId, 'click');
+
+    } catch (error) {
+      console.error('Error recording click:', error);
+    }
   }
 
-  // Get interaction weight for interest calculation
-  getInteractionWeight(interactionType) {
-    const weights = {
-      'view': 0.1,
-      'like': 0.3,
-      'comment': 0.5,
-      'share': 0.7,
-      'save': 0.6,
-      'click': 0.4
-    };
-    return weights[interactionType] || 0.1;
+  // Record ad conversion
+  async recordConversion(adId, userId, conversionData = {}, context = {}) {
+    try {
+      const ad = this.activeAds.get(adId);
+      if (!ad) return;
+
+      // Update ad performance
+      ad.performance.conversions += 1;
+      ad.updatePerformance();
+
+      // Update ad set performance
+      const adSet = await AdSet.findById(ad.adSet);
+      if (adSet) {
+        adSet.performance.conversions += 1;
+        adSet.updatePerformance();
+        await adSet.save();
+      }
+
+      // Update campaign performance
+      const campaign = await Campaign.findById(ad.campaign);
+      if (campaign) {
+        campaign.performance.conversions += 1;
+        campaign.updatePerformance();
+        await campaign.save();
+      }
+
+      // Save ad performance
+      await ad.save();
+
+      // Record interaction
+      await AdInteraction.create({
+        ad: adId,
+        adSet: ad.adSet,
+        campaign: ad.campaign,
+        user: userId,
+        type: 'conversion',
+        conversion: conversionData,
+        userAgent: context.userAgent,
+        ipAddress: context.ipAddress,
+        device: context.device,
+        platform: context.platform
+      });
+
+    } catch (error) {
+      console.error('Error recording conversion:', error);
+    }
+  }
+
+  // Update user ad history
+  updateUserHistory(userId, adId, action) {
+    if (!this.userAdHistory.has(userId)) {
+      this.userAdHistory.set(userId, new Map());
+    }
+
+    const userHistory = this.userAdHistory.get(userId);
+    if (!userHistory.has(adId)) {
+      userHistory.set(adId, { impressions: 0, clicks: 0 });
+    }
+
+    const adHistory = userHistory.get(adId);
+    if (action === 'impression') {
+      adHistory.impressions += 1;
+    } else if (action === 'click') {
+      adHistory.clicks += 1;
+    }
   }
 
   // Calculate user age from date of birth
-  calculateAge(dateOfBirth) {
+  calculateUserAge(dateOfBirth) {
+    if (!dateOfBirth) return 25; // Default age if not provided
+    
     const today = new Date();
     const birthDate = new Date(dateOfBirth);
     let age = today.getFullYear() - birthDate.getFullYear();
@@ -351,93 +339,47 @@ class AdDeliveryEngine {
     return age;
   }
 
-  // Track ad interaction
-  async trackAdInteraction(adId, userId, interactionType, metadata = {}) {
+  // Refresh active ads (called periodically)
+  async refreshActiveAds() {
+    await this.loadActiveAds();
+  }
+
+  // Get ad delivery statistics
+  async getDeliveryStats() {
     try {
-      const ad = await Ad.findById(adId);
-      if (!ad) return;
+      const stats = {
+        totalActiveAds: this.activeAds.size,
+        totalImpressions: 0,
+        totalClicks: 0,
+        totalConversions: 0,
+        averageCTR: 0,
+        averageCPC: 0
+      };
 
-      // Update ad performance
-      switch (interactionType) {
-        case 'impression':
-          ad.performance.impressions += 1;
-          break;
-        case 'click':
-          ad.performance.clicks += 1;
-          break;
-        case 'conversion':
-          ad.performance.conversions += 1;
-          break;
+      for (const ad of this.activeAds.values()) {
+        stats.totalImpressions += ad.performance.impressions;
+        stats.totalClicks += ad.performance.clicks;
+        stats.totalConversions += ad.performance.conversions;
       }
 
-      // Recalculate derived metrics
-      if (ad.performance.impressions > 0) {
-        ad.performance.ctr = (ad.performance.clicks / ad.performance.impressions) * 100;
+      if (stats.totalImpressions > 0) {
+        stats.averageCTR = (stats.totalClicks / stats.totalImpressions) * 100;
       }
 
-      ad.performance.lastUpdated = new Date();
-      await ad.save();
-
-      // Update campaign and ad set performance
-      await this.updateCampaignPerformance(ad.campaign, interactionType);
-      await this.updateAdSetPerformance(ad.adSet, interactionType);
-
+      return stats;
     } catch (error) {
-      console.error('Error tracking ad interaction:', error);
+      console.error('Error getting delivery stats:', error);
+      return {};
     }
-  }
-
-  // Update campaign performance
-  async updateCampaignPerformance(campaignId, interactionType) {
-    const campaign = await Campaign.findById(campaignId);
-    if (!campaign) return;
-
-    switch (interactionType) {
-      case 'impression':
-        campaign.performance.impressions += 1;
-        break;
-      case 'click':
-        campaign.performance.clicks += 1;
-        break;
-      case 'conversion':
-        campaign.performance.conversions += 1;
-        break;
-    }
-
-    // Recalculate derived metrics
-    if (campaign.performance.impressions > 0) {
-      campaign.performance.ctr = (campaign.performance.clicks / campaign.performance.impressions) * 100;
-    }
-
-    campaign.performance.lastUpdated = new Date();
-    await campaign.save();
-  }
-
-  // Update ad set performance
-  async updateAdSetPerformance(adSetId, interactionType) {
-    const adSet = await AdSet.findById(adSetId);
-    if (!adSet) return;
-
-    switch (interactionType) {
-      case 'impression':
-        adSet.performance.impressions += 1;
-        break;
-      case 'click':
-        adSet.performance.clicks += 1;
-        break;
-      case 'conversion':
-        adSet.performance.conversions += 1;
-        break;
-    }
-
-    // Recalculate derived metrics
-    if (adSet.performance.impressions > 0) {
-      adSet.performance.ctr = (adSet.performance.clicks / adSet.performance.impressions) * 100;
-    }
-
-    adSet.performance.lastUpdated = new Date();
-    await adSet.save();
   }
 }
 
-export default AdDeliveryEngine;
+// Create singleton instance
+const adDeliveryEngine = new AdDeliveryEngine();
+
+// Refresh active ads every 5 minutes
+setInterval(() => {
+  adDeliveryEngine.refreshActiveAds();
+}, 5 * 60 * 1000);
+
+export default adDeliveryEngine;

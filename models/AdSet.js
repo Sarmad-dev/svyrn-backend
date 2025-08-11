@@ -53,7 +53,13 @@ const adSetSchema = new mongoose.Schema({
       enum: ['impressions', 'clicks', 'conversions', 'reach', 'engagement'],
       default: 'clicks'
     },
-    eventType: String // For conversion optimization
+    eventType: String, // For conversion optimization
+    conversionWindow: {
+      type: Number,
+      default: 1, // days
+      min: 1,
+      max: 28
+    }
   },
   targeting: {
     demographics: {
@@ -70,29 +76,60 @@ const adSetSchema = new mongoose.Schema({
       genders: [{
         type: String,
         enum: ['male', 'female', 'other']
-      }]
+      }],
+      relationshipStatus: [String],
+      education: [String],
+      jobTitles: [String],
+      income: [String]
     },
     location: {
       countries: [String],
       cities: [String],
-      radius: Number
+      regions: [String],
+      radius: Number,
+      coordinates: {
+        latitude: Number,
+        longitude: Number
+      }
     },
-    interests: [String],
-    behaviors: [String],
+    interests: [{
+      category: String,
+      subcategory: String,
+      weight: {
+        type: Number,
+        default: 1
+      }
+    }],
+    behaviors: [{
+      type: String,
+      description: String
+    }],
     customAudiences: [{
       type: mongoose.Schema.Types.ObjectId,
       ref: 'CustomAudience'
-    }]
+    }],
+    lookalikeSources: [{
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'CustomAudience'
+    }],
+    // Facebook specific targeting
+    lifeEvents: [String],
+    purchaseBehaviors: [String],
+    mobileDeviceUsers: [String]
   },
   placement: {
     platforms: [{
       type: String,
-      enum: ['feed', 'stories', 'reels', 'marketplace', 'messenger'],
+      enum: ['feed', 'stories', 'reels', 'marketplace', 'messenger', 'search'],
       default: 'feed'
     }],
     devices: [{
       type: String,
       enum: ['mobile', 'desktop', 'tablet']
+    }],
+    positions: [{
+      type: String,
+      enum: ['top', 'middle', 'bottom']
     }]
   },
   schedule: {
@@ -154,6 +191,14 @@ const adSetSchema = new mongoose.Schema({
       type: Number,
       default: 0
     },
+    reach: {
+      type: Number,
+      default: 0
+    },
+    frequency: {
+      type: Number,
+      default: 0
+    },
     lastUpdated: {
       type: Date,
       default: Date.now
@@ -171,6 +216,31 @@ const adSetSchema = new mongoose.Schema({
 adSetSchema.index({ campaign: 1, status: 1 });
 adSetSchema.index({ advertiser: 1, status: 1 });
 adSetSchema.index({ 'schedule.startDate': 1, 'schedule.endDate': 1 });
+
+// Method to update performance metrics
+adSetSchema.methods.updatePerformance = function() {
+  // Calculate CTR
+  if (this.performance.impressions > 0) {
+    this.performance.ctr = (this.performance.clicks / this.performance.impressions) * 100;
+  }
+  
+  // Calculate CPM (cost per 1000 impressions)
+  if (this.performance.impressions > 0) {
+    this.performance.cpm = (this.performance.spend / this.performance.impressions) * 1000;
+  }
+  
+  // Calculate CPC (cost per click)
+  if (this.performance.clicks > 0) {
+    this.performance.cpc = this.performance.spend / this.performance.clicks;
+  }
+  
+  // Calculate frequency
+  if (this.performance.reach > 0) {
+    this.performance.frequency = this.performance.impressions / this.performance.reach;
+  }
+  
+  this.performance.lastUpdated = new Date();
+};
 
 const AdSet = mongoose.model('AdSet', adSetSchema);
 export default AdSet;

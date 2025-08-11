@@ -18,34 +18,42 @@ const adSchema = new mongoose.Schema(
       ref: "User",
       required: true,
     },
-    image: {
-      type: String,
+    adSet: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "AdSet",
       required: true,
     },
     campaign: {
-      name: {
-        type: String,
-        required: true,
-      },
-      campaignType: String,
-      objective: {
-        type: String,
-        enum: ["awareness", "traffic", "engagement", "leads", "sales"],
-        default: "awareness",
-      },
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Campaign",
+      required: true,
     },
     creative: {
       type: {
         type: String,
-        enum: ["image", "video", "carousel", "text"],
+        enum: ["image", "video", "carousel", "slideshow", "collection", "text"],
         required: true,
       },
       media: [
         {
           url: String,
+          thumbnail: String,
           caption: String,
+          altText: String,
+          duration: Number, // for videos
+          order: Number, // for carousels
         },
       ],
+      primaryText: {
+        type: String,
+        maxlength: [125, "Primary text cannot exceed 125 characters"],
+        required: true,
+      },
+      headline: {
+        type: String,
+        maxlength: [40, "Headline cannot exceed 40 characters"],
+        required: true,
+      },
       callToAction: {
         type: String,
         enum: [
@@ -55,6 +63,10 @@ const adSchema = new mongoose.Schema(
           "download",
           "contact_us",
           "book_now",
+          "get_quote",
+          "apply_now",
+          "donate_now",
+          "subscribe",
         ],
         required: true,
         default: "learn_more",
@@ -62,6 +74,15 @@ const adSchema = new mongoose.Schema(
       destinationUrl: {
         type: String,
         required: false,
+      },
+      // Facebook specific creative options
+      dynamicAdCreative: {
+        type: Boolean,
+        default: false,
+      },
+      brandSafety: {
+        type: Boolean,
+        default: true,
       },
     },
     targeting: {
@@ -195,6 +216,43 @@ const adSchema = new mongoose.Schema(
         type: Number,
         default: 0,
       },
+      reach: {
+        type: Number,
+        default: 0,
+      },
+      frequency: {
+        type: Number,
+        default: 0,
+      },
+      lastUpdated: {
+        type: Date,
+        default: Date.now,
+      },
+    },
+    // Ad delivery tracking
+    delivery: {
+      startTime: Date,
+      endTime: Date,
+      totalBudget: Number,
+      remainingBudget: Number,
+      isDelivering: {
+        type: Boolean,
+        default: false,
+      },
+    },
+    // Ad review
+    review: {
+      status: {
+        type: String,
+        enum: ["pending", "approved", "rejected"],
+        default: "pending",
+      },
+      feedback: String,
+      reviewedBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+      },
+      reviewedAt: Date,
     },
     isActive: {
       type: Boolean,
@@ -216,8 +274,45 @@ const adSchema = new mongoose.Schema(
 
 // Indexes for performance
 adSchema.index({ advertiser: 1, status: 1 });
+adSchema.index({ adSet: 1, status: 1 });
+adSchema.index({ campaign: 1, status: 1 });
 adSchema.index({ "schedule.startDate": 1, "schedule.endDate": 1 });
 adSchema.index({ status: 1, isActive: 1 });
+adSchema.index({ "delivery.isDelivering": 1 });
+
+// Method to update performance metrics
+adSchema.methods.updatePerformance = function() {
+  // Calculate CTR
+  if (this.performance.impressions > 0) {
+    this.performance.ctr = (this.performance.clicks / this.performance.impressions) * 100;
+  }
+  
+  // Calculate CPM (cost per 1000 impressions)
+  if (this.performance.impressions > 0) {
+    this.performance.cpm = (this.performance.spend / this.performance.impressions) * 1000;
+  }
+  
+  // Calculate CPC (cost per click)
+  if (this.performance.clicks > 0) {
+    this.performance.cpc = this.performance.spend / this.performance.clicks;
+  }
+  
+  // Calculate frequency
+  if (this.performance.reach > 0) {
+    this.performance.frequency = this.performance.impressions / this.performance.reach;
+  }
+  
+  this.performance.lastUpdated = new Date();
+};
+
+// Method to check if ad is currently active
+adSchema.methods.isCurrentlyActive = function() {
+  const now = new Date();
+  return this.status === 'active' && 
+         this.delivery.isDelivering &&
+         now >= this.schedule.startDate && 
+         now <= this.schedule.endDate;
+};
 
 const Ad = mongoose.model("Ad", adSchema);
 export default Ad;
