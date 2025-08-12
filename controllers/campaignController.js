@@ -452,6 +452,7 @@ export const getCampaigns = async (req, res) => {
       return {
         _id: campaign._id,
         name: campaign.name,
+        image: campaign.image,
         objective: campaign.objective,
         status: campaign.status,
         createdAt: campaign.createdAt,
