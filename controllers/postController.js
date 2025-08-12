@@ -14,6 +14,7 @@ import Group from "../models/Group.js";
 import Page from "../models/Page.js";
 import NotificationHelper from "../utils/notificationHelper.js";
 import MediaCreation from "../services/MediaCreation.js";
+import { notifyPagePost, notifyPageComment } from "./pageController.js";
 
 const recommendationEngine = new RecommendationEngine();
 const contentAnalyzer = new ContentAnalyzer();
@@ -110,6 +111,9 @@ export const createPost = async (req, res) => {
         { $push: { posts: post._id } },
         { new: true }
       );
+      
+      // Send notification to page followers
+      await notifyPagePost(pageId, post._id, req.user._id, text);
     }
 
     // Analyze content for recommendations
@@ -580,6 +584,11 @@ export const addComment = async (req, res) => {
         req.user.id,
         post.author
       );
+    }
+
+    // If this is a page post, send page comment notification
+    if (post.page) {
+      await notifyPageComment(post.page, comment._id, req.user.id, content);
     }
 
     res.status(201).json({

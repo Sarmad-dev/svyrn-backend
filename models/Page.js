@@ -19,7 +19,8 @@ const pageSchema = new mongoose.Schema({
   },
   category: {
     type: String,
-    required: true
+    required: true,
+    enum: ['business', 'entertainment', 'news', 'sports', 'technology', 'fashion', 'food', 'travel', 'health', 'education', 'other']
   },
   profilePicture: {
     type: String,
@@ -79,7 +80,7 @@ const pageSchema = new mongoose.Schema({
   }],
   privacy: {
     type: String,
-    enum: ['public', 'friends'],
+    enum: ['public', 'friends', 'private'],
     default: 'public'
   },
   posts: [{
@@ -109,6 +110,28 @@ const pageSchema = new mongoose.Schema({
       engagement: Number,
       newFollowers: Number
     }]
+  },
+  settings: {
+    allowComments: {
+      type: Boolean,
+      default: true
+    },
+    allowReactions: {
+      type: Boolean,
+      default: true
+    },
+    allowSharing: {
+      type: Boolean,
+      default: true
+    },
+    notifyOnFollow: {
+      type: Boolean,
+      default: true
+    },
+    notifyOnComment: {
+      type: Boolean,
+      default: true
+    }
   }
 }, {
   timestamps: true
