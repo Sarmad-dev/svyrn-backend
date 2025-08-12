@@ -26,6 +26,7 @@ import recommendationRoutes from "./routes/recommendations.js";
 import storyRoutes from "./routes/stories.js";
 import searchRoutes from "./routes/search.js";
 import campaignRoutes from "./routes/campaign.js";
+import reelRoutes from "./routes/reels.js";
 import backgroundJobManager from "./services/BackgroundJobManager.js";
 import initializeSocket from "./socket/index.js";
 
@@ -125,6 +126,7 @@ app.use("/api/recommendations", recommendationRoutes);
 app.use("/api/stories", storyRoutes);
 app.use('/api/search', searchRoutes);
 app.use("/api/campaigns", campaignRoutes);
+app.use("/api/reels", reelRoutes);
 
 // Health check
 app.get("/api/health", (req, res) => {

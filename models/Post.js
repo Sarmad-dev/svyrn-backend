@@ -81,6 +81,22 @@ const postSchema = new mongoose.Schema(
           default: Date.now,
         },
         caption: String,
+        destination: {
+          type: String,
+          enum: ["feed", "group", "conversation"],
+          default: "feed",
+        },
+        targetId: {
+          type: mongoose.Schema.Types.ObjectId,
+          refPath: "shares.targetModel",
+        },
+        targetModel: {
+          type: String,
+          enum: ["Group", "Conversation"],
+          required: function() {
+            return this.destination && this.destination !== "feed" && this.targetId;
+          },
+        },
       },
     ],
     group: {

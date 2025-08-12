@@ -666,7 +666,7 @@ export const getMedia = async (req, res) => {
 // @access  Private
 export const sharePost = async (req, res) => {
   try {
-    const { caption } = req.body;
+    const { caption, destination = "feed", groupId, conversationId } = req.body;
 
     const post = await Post.findById(req.params.id);
     if (!post || !post.isActive) {
@@ -688,12 +688,88 @@ export const sharePost = async (req, res) => {
       });
     }
 
-    // Add share
-    post.shares.push({
+    // Validate destination and required parameters
+    if (destination === "group" && !groupId) {
+      return res.status(400).json({
+        status: "error",
+        message: "Group ID is required when sharing to a group",
+      });
+    }
+
+    if (destination === "conversation" && !conversationId) {
+      return res.status(400).json({
+        status: "error",
+        message: "Conversation ID is required when sharing to a conversation",
+      });
+    }
+
+    // If sharing to group, verify group exists and user is member
+    if (destination === "group" && groupId) {
+      const Group = await import("../models/Group.js");
+      const group = await Group.default.findById(groupId);
+      if (!group) {
+        return res.status(404).json({
+          status: "error",
+          message: "Group not found",
+        });
+      }
+      
+      // Check if user is a member of the group
+      const isMember = group.members.some(member => 
+        member.user.toString() === req.user.id.toString()
+      );
+      
+      if (!isMember) {
+        return res.status(403).json({
+          status: "error",
+          message: "You must be a member of the group to share posts there",
+        });
+      }
+    }
+
+    // If sharing to conversation, verify conversation exists and user is participant
+    if (destination === "conversation" && conversationId) {
+      const Conversation = await import("../models/Conversation.js");
+      const conversation = await Conversation.default.findById(conversationId);
+      if (!conversation) {
+        return res.status(404).json({
+          status: "error",
+          message: "Conversation not found",
+        });
+      }
+      
+      // Check if user is a participant in the conversation
+      const isParticipant = conversation.participants.some(participant => 
+        participant.user.toString() === req.user.id.toString()
+      );
+      
+      if (!isParticipant) {
+        return res.status(403).json({
+          status: "error",
+          message: "You must be a participant in the conversation to share posts there",
+        });
+      }
+    }
+
+    // Add share with destination information
+    const shareData = {
       user: req.user.id,
       sharedAt: new Date(),
       caption: caption || "",
-    });
+      destination: destination,
+    };
+    
+    // Only add targetId and targetModel for group/conversation shares
+    if (destination === "group" && groupId) {
+      shareData.targetId = groupId;
+      shareData.targetModel = "Group";
+    } else if (destination === "conversation" && conversationId) {
+      shareData.targetId = conversationId;
+      shareData.targetModel = "Conversation";
+    }
+    
+    console.log("Adding share data:", shareData);
+    post.shares.push(shareData);
 
     await post.save();
 
@@ -706,6 +782,8 @@ export const sharePost = async (req, res) => {
       {
         hasCaption: !!caption,
         postAuthor: post.author.toString(),
+        destination: destination,
+        targetId: destination === "group" ? groupId : destination === "conversation" ? conversationId : null,
       }
     );
 
@@ -714,9 +792,12 @@ export const sharePost = async (req, res) => {
       message: "Post shared successfully",
       data: {
         sharesCount: post.sharesCount,
+        destination: destination,
+        targetId: destination === "group" ? groupId : destination === "conversation" ? conversationId : null,
       },
     });
   } catch (error) {
+    console.error("Error sharing post:", error);
     res.status(500).json({
       status: "error",
       message: "Error sharing post",

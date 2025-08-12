@@ -1,4 +1,5 @@
 import Joi from 'joi';
+import { body, validationResult } from "express-validator";
 
 export const validate = (schema) => {
   return (req, res, next) => {
@@ -375,3 +376,210 @@ export const createAdSchema = Joi.object({
   }).required(),
   tags: Joi.array().items(Joi.string()).optional()
 });
+
+// Validation for reels
+export const validateReel = [
+  body("mediaType")
+    .isIn(["image", "video"])
+    .withMessage("Media type must be either 'image' or 'video'"),
+  
+  body("mediaUrl")
+    .notEmpty()
+    .withMessage("Media URL is required"),
+  
+  body("caption")
+    .optional()
+    .isLength({ min: 1, max: 500 })
+    .withMessage("Caption must be between 1 and 500 characters"),
+  
+  body("privacy")
+    .optional()
+    .isIn(["public", "friends", "private", "followers"])
+    .withMessage("Invalid privacy setting"),
+  
+  body("location")
+    .optional()
+    .isLength({ max: 100 })
+    .withMessage("Location must be less than 100 characters"),
+  
+  body("tags")
+    .optional()
+    .isArray()
+    .withMessage("Tags must be an array"),
+  
+  body("hashtags")
+    .optional()
+    .isArray()
+    .withMessage("Hashtags must be an array"),
+  
+  body("mentions")
+    .optional()
+    .isArray()
+    .withMessage("Mentions must be an array"),
+  
+  (req, res, next) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        status: "error",
+        message: "Validation failed",
+        errors: errors.array(),
+      });
+    }
+    next();
+  },
+];
+
+// Validation for comments
+export const validateComment = [
+  body("content")
+    .trim()
+    .isLength({ min: 1, max: 1000 })
+    .withMessage("Comment content must be between 1 and 1000 characters"),
+  
+  body("parentCommentId")
+    .optional()
+    .isMongoId()
+    .withMessage("Parent comment ID must be a valid MongoDB ID"),
+  
+  (req, res, next) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        status: "error",
+        message: "Validation failed",
+        errors: errors.array(),
+      });
+    }
+    next();
+  },
+];
+
+// Validation for reactions
+export const validateReaction = [
+  body("reactionType")
+    .optional()
+    .isIn(["like", "love", "haha", "wow", "sad", "angry"])
+    .withMessage("Invalid reaction type"),
+  
+  (req, res, next) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        status: "error",
+        message: "Validation failed",
+        errors: errors.array(),
+      });
+    }
+    next();
+  },
+];
+
+// Validation for sharing
+export const validateShare = [
+  body("caption")
+    .optional()
+    .isLength({ max: 500 })
+    .withMessage("Share caption cannot exceed 500 characters"),
+  
+  (req, res, next) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        success: false,
+        message: "Validation failed",
+        errors: errors.array(),
+      });
+    }
+    next();
+  },
+];
+
+// Validation for reporting
+export const validateReport = [
+  body("reason")
+    .trim()
+    .isLength({ min: 1, max: 200 })
+    .withMessage("Report reason must be between 1 and 200 characters"),
+  
+  body("details")
+    .optional()
+    .isLength({ max: 1000 })
+    .withMessage("Report details cannot exceed 1000 characters"),
+  
+  (req, res, next) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        success: false,
+        message: "Validation failed",
+        errors: errors.array(),
+      });
+    }
+    next();
+  },
+];
+
+// Validation for comment moderation
+export const validateModeration = [
+  body("status")
+    .isIn(["pending", "approved", "rejected", "flagged"])
+    .withMessage("Invalid moderation status"),
+  
+  body("notes")
+    .optional()
+    .isLength({ max: 500 })
+    .withMessage("Moderation notes cannot exceed 500 characters"),
+  
+  (req, res, next) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        success: false,
+        message: "Validation failed",
+        errors: errors.array(),
+      });
+    }
+    next();
+  },
+];
+
+// Validation for comment hiding
+export const validateHideComment = [
+  body("reason")
+    .optional()
+    .isLength({ max: 200 })
+    .withMessage("Hide reason cannot exceed 200 characters"),
+  
+  (req, res, next) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        success: false,
+        message: "Validation failed",
+        errors: errors.array(),
+      });
+    }
+    next();
+  },
+];
+
+// Validation for spam flagging
+export const validateSpamFlag = [
+  body("score")
+    .optional()
+    .isInt({ min: 0, max: 100 })
+    .withMessage("Spam score must be between 0 and 100"),
+  
+  (req, res, next) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        success: false,
+        message: "Validation failed",
+        errors: errors.array(),
+      });
+    }
+    next();
+  },
+];
