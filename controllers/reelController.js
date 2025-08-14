@@ -132,7 +132,7 @@ export const getReels = async (req, res) => {
     } = req.query;
 
     const skip = (parseInt(page) - 1) * parseInt(limit);
-    const userId = req.user?.id;
+    const userId = req.user?._id;
 
     // Build query
     let query = { isDeleted: false, isArchived: false };
@@ -178,7 +178,8 @@ export const getReels = async (req, res) => {
       .limit(parseInt(limit))
       .populate("author", "name profilePicture username isVerified")
       .populate("comments", "content author createdAt")
-      .populate("reactions.user", "name profilePicture");
+      .populate("reactions.user", "name profilePicture _id")
+      .populate("saves.user", "name profilePicture _id");
 
     // Get total count for pagination
     const total = await Reel.countDocuments(query);
@@ -198,6 +199,8 @@ export const getReels = async (req, res) => {
         );
       }
     }
+
+    console.log("Reels: ", reels)
 
     res.status(200).json({
       success: true,
@@ -576,7 +579,7 @@ export const toggleReaction = async (req, res) => {
   try {
     const { id } = req.params;
     const { reactionType = "like" } = req.body;
-    const userId = req.user.id;
+    const userId = req.user._id;
 
     const reel = await Reel.findById(id);
     if (!reel) {
@@ -750,7 +753,7 @@ export const shareReel = async (req, res) => {
 export const getSavedReels = async (req, res) => {
   try {
     const { page = 1, limit = 20 } = req.query;
-    const userId = req.user.id;
+    const userId = req.user._id;
     const skip = (parseInt(page) - 1) * parseInt(limit);
 
     const reels = await Reel.find({

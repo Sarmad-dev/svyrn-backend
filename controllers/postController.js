@@ -762,7 +762,7 @@ export const sharePost = async (req, res) => {
 
     // Add share with destination information
     const shareData = {
-      user: req.user.id,
+      user: req.user._id,
       sharedAt: new Date(),
       caption: caption || "",
       destination: destination,

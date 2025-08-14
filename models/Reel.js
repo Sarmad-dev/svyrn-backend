@@ -438,7 +438,8 @@ reelSchema.statics.getTrendingReels = function (limit = 20, category = null) {
     .limit(limit)
     .populate("author", "name profilePicture username isVerified")
     .populate("comments", "content author createdAt")
-    .populate("reactions.user", "name profilePicture");
+    .populate("reactions.user", "name profilePicture _id")
+    .populate("saves.user", "name profilePicture _id");
 };
 
 // Static method to get reels by category
