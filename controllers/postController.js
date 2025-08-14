@@ -189,6 +189,8 @@ export const getFeed = async (req, res) => {
     posts = await Post.find(baseQuery)
       .populate("author", "name username profilePicture isVerified")
       .populate("tags", "name username profilePicture")
+      .populate("reactions.user", "name profilePicture _id")
+      .populate("comments", "content author createdAt")
       .sort({ isPinned: -1, createdAt: -1, _id: -1 }) // Added _id for consistent cursor ordering
       .limit(limitNum + 1)
       .lean();
