@@ -74,7 +74,10 @@ export const createPost = async (req, res) => {
       });
 
       new MediaCreation().createMedia({
-        base64,
+        url: result.secure_url,
+        type: fileCategory,
+        size: result.bytes,
+        duration: fileCategory === "video" ? result.duration : 0,
         caption: "",
         post: postData._id,
         author: req.user._id,
