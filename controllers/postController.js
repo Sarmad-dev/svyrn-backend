@@ -77,8 +77,6 @@ export const createPost = async (req, res) => {
         base64,
         caption: "",
         post: postData._id,
-        page: pageId,
-        group: groupId,
         author: req.user._id,
       });
 
