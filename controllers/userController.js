@@ -2,6 +2,7 @@ import Post from "../models/Post.js";
 import User from "../models/User.js";
 import { validationResult } from "express-validator";
 import NotificationHelper from "../utils/notificationHelper.js";
+import Media from "../models/Media.js";
 
 // @desc    Search users
 // @route   GET /api/users/search
@@ -89,7 +90,7 @@ export const updateProfile = async (req, res) => {
 
     const updates = req.body;
 
-    const user = await User.findByIdAndUpdate(req.user.id, updates, {
+    const user = await User.findByIdAndUpdate(req.user._id, updates, {
       new: true,
       runValidators: true,
     }).select("-password");
@@ -313,6 +314,7 @@ export const getUserProfile = async (req, res) => {
           coverPhoto: user.coverPhoto,
           bio: user.bio,
           currentJob: user.currentJob,
+          gender: user.gender,
           worksAt: user.worksAt,
           livesIn: user.livesIn,
           From: user.From,
@@ -359,6 +361,7 @@ export const getMyProfile = async (req, res) => {
           coverPhoto: user.coverPhoto,
           bio: user.bio,
           currentJob: user.currentJob,
+          gender: user.gender,
           worksAt: user.worksAt,
           livesIn: user.livesIn,
           From: user.From,
@@ -463,6 +466,110 @@ export const getUserFollowing = async (req, res) => {
       status: "success",
       data: {
         following: user.following,
+        pagination: {
+          page: Number(page),
+          limit: Number(limit),
+          total,
+          pages: Math.ceil(total / limit),
+        },
+      },
+    });
+  } catch (error) {
+    res.status(500).json({
+      status: "error",
+      message: "Error fetching following",
+      error: error.message,
+    });
+  }
+};
+
+// @desc    Get user's photos
+// @route   GET /api/users/:id/photos
+// @access  Private
+export const getUserPhotos = async (req, res) => {
+  try {
+    const { limit = 20, page = 1 } = req.query;
+    const skip = (page - 1) * limit;
+
+    const user = await User.findById(req.params.id);
+
+    if (!user) {
+      return res.status(404).json({
+        status: "error",
+        message: "User not found",
+      });
+    }
+
+    const photos = await Media.find({
+      author: user._id,
+      type: "image",
+    })
+      .sort({ createdAt: -1 })
+      .limit(Number(limit))
+      .skip(Number(skip))
+      .select("url _id createdAt");
+
+    const total = await Media.countDocuments({
+      author: user._id,
+      type: "image",
+    });
+
+    res.status(200).json({
+      status: "success",
+      data: {
+        photos,
+        pagination: {
+          page: Number(page),
+          limit: Number(limit),
+          total,
+          pages: Math.ceil(total / limit),
+        },
+      },
+    });
+  } catch (error) {
+    res.status(500).json({
+      status: "error",
+      message: "Error fetching following",
+      error: error.message,
+    });
+  }
+};
+
+// @desc    Get user's videos
+// @route   GET /api/users/:id/videos
+// @access  Private
+export const getUserVideos = async (req, res) => {
+  try {
+    const { limit = 20, page = 1 } = req.query;
+    const skip = (page - 1) * limit;
+
+    const user = await User.findById(req.params.id);
+
+    if (!user) {
+      return res.status(404).json({
+        status: "error",
+        message: "User not found",
+      });
+    }
+
+    const videos = await Media.find({
+      author: user._id,
+      type: "video",
+    })
+      .sort({ createdAt: -1 })
+      .limit(Number(limit))
+      .skip(Number(skip))
+      .select("url _id createdAt");
+
+    const total = await Media.countDocuments({
+      author: user._id,
+      type: "video",
+    });
+
+    res.status(200).json({
+      status: "success",
+      data: {
+        videos,
         pagination: {
           page: Number(page),
           limit: Number(limit),

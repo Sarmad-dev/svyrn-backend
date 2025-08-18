@@ -1,12 +1,11 @@
 import express from 'express';
 import { protect } from '../middleware/auth.js';
-import { validate, createProductSchema } from '../middleware/validation.js';
 import * as marketplaceController from '../controllers/marketplaceController.js';
 
 const router = express.Router();
 
 // Marketplace routes
-router.post('/products', protect, validate(createProductSchema), marketplaceController.createProduct);
+router.post('/products', protect, marketplaceController.createProduct);
 router.get('/products', protect, marketplaceController.getProducts);
 router.get('/products/:id', protect, marketplaceController.getProduct);
 router.get('/products/user/:id', protect, marketplaceController.getUserProducts);

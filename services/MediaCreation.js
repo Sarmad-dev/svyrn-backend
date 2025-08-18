@@ -10,7 +10,7 @@ class MediaCreation {
     this.media = [];
   }
 
-  async createMedia({ url, type, duration, size, duration, caption, post, author }) {
+  async createMedia({ url, type, duration, size, caption, post, author }) {
 
     const media = new Media({
       type,
