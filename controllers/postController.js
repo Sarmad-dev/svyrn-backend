@@ -35,7 +35,7 @@ export const createPost = async (req, res) => {
       });
     }
 
-    const { text, privacy, pageId, groupId, base64, latitude, longitude } =
+    const { text, privacy, pageId, groupId, mediaFiles, latitude, longitude } =
       req.body;
 
     const postData = {
@@ -65,33 +65,38 @@ export const createPost = async (req, res) => {
       };
     }
 
-    if (base64) {
-      const mimeType = getMimeTypeFromBase64(base64);
-      const fileCategory = getFileCategory(mimeType);
+    // Handle multiple media files
+    if (mediaFiles && mediaFiles.length > 0) {
+      const mediaPromises = mediaFiles.map(async (base64Data) => {
+        const mimeType = getMimeTypeFromBase64(base64Data);
+        const fileCategory = getFileCategory(mimeType);
 
-      const result = await cloudinary.uploader.upload(base64, {
-        resource_type: fileCategory,
-      });
+        const result = await cloudinary.uploader.upload(base64Data, {
+          resource_type: fileCategory,
+        });
 
-      new MediaCreation().createMedia({
-        url: result.secure_url,
-        type: fileCategory,
-        size: result.bytes,
-        duration: fileCategory === "video" ? result.duration : 0,
-        caption: "",
-        post: postData._id,
-        author: req.user._id,
-      });
+        // Create media record
+        await new MediaCreation().createMedia({
+          url: result.secure_url,
+          type: fileCategory,
+          size: result.bytes,
+          duration: fileCategory === "video" ? result.duration : 0,
+          caption: "",
+          post: postData._id,
+          author: req.user._id,
+        });
 
-      postData.content.media = [
-        {
+        return {
           type: fileCategory,
           url: result.secure_url,
           caption: "",
           size: result.bytes,
           duration: fileCategory === "video" ? result.duration : 0,
-        },
-      ];
+        };
+      });
+
+      const mediaResults = await Promise.all(mediaPromises);
+      postData.content.media = mediaResults;
     }
 
     const post = await Post.create(postData);

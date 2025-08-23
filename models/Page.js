@@ -145,12 +145,12 @@ pageSchema.index({ name: 'text', description: 'text' });
 
 // Virtual for followers count
 pageSchema.virtual('followersCount').get(function() {
-  return this.followers.length;
+  return this.followers ? this.followers.length : 0;
 });
 
 // Virtual for posts count
 pageSchema.virtual('postsCount').get(function() {
-  return this.posts.length;
+  return this.posts ? this.posts.length : 0;
 });
 
 const Page = mongoose.model('Page', pageSchema);
